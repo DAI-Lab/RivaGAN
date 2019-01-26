@@ -1,2 +1,0 @@
-epoch,train.acc,train.loss,train.mse,val.acc,val.mse
-1,0.525,0.691,0.001,0.559,0.001
