@@ -20,12 +20,28 @@ from model import *
 def run(args):
     log_dir = os.path.join("results/", str(int(time())))
     os.makedirs(log_dir, exist_ok=False)
+    with open(os.path.join(log_dir, "config.json"), "wt") as fout:
+        fout.write(json.dumps(args.__dict__, indent=2, default=lambda o: str(o)))
 
-    encoder = Encoder(data_dim=args.data_dim).cuda()
+    if args.use_shortcut:
+        encoder = ShortcutEncoder(data_dim=args.data_dim).cuda()
+    else: encoder = Encoder(data_dim=args.data_dim).cuda()
     decoder = Decoder(data_dim=args.data_dim).cuda()
     critic = Critic().cuda()
     adversary = Adversary().cuda()
-    noise = lambda x: Scale()(Crop()(x)) if args.use_noise else x
+
+    noise_layers = []
+    if args.use_crop:
+        noise_layers.append(Crop())
+    if args.use_scale:
+        noise_layers.append(Scale())
+    if args.use_compression:
+        noise_layers.append(Compression())
+    def noise(x):
+        for layer in noise_layers:
+            if random() < 0.5:
+                x = layer(x)
+        return x
     
     train, val = load_train_val(args.seq_len, args.batch_size)
     g_opt = torch.optim.Adam(chain(encoder.parameters(), decoder.parameters()), lr=args.lr)
@@ -62,11 +78,11 @@ def run(args):
                     loss -= F.binary_cross_entropy_with_logits(decoder(adv_frames), data)
                 loss.backward(retain_graph=True)
                 for p in critic.parameters():
-                    p.data.clamp_(-0.1, 0.1)
+                    p.data.clamp_(-0.01, 0.01)
                 d_opt.step()
 
             loss = 0.0
-            loss += F.mse_loss(wm_frames, frames)
+            loss += 10.0 * F.mse_loss(wm_frames, frames)
             loss += F.binary_cross_entropy_with_logits(wm_data, data)
             if args.use_critic:
                 loss += torch.mean(critic(wm_frames))
@@ -103,19 +119,20 @@ def run(args):
         history.append(metrics)
         pd.DataFrame(history).to_csv(os.path.join(log_dir, "metrics.tsv"), index=False, sep="\t")
         torch.save((encoder, decoder, critic, adversary), os.path.join(log_dir, "model.pt"))
-        with open(os.path.join(log_dir, "config.json"), "wt") as fout:
-            fout.write(json.dumps(args.__dict__, indent=2, default=lambda o: str(o)))
         g_scheduler.step(metrics["train.loss"])
         d_scheduler.step(metrics["train.loss"])
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--lr', type=float, default=1e-4)
-    parser.add_argument('--epochs', type=int, default=100)
-    parser.add_argument('--seq_len', type=int, default=5)
+    parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--epochs', type=int, default=64)
+    parser.add_argument('--seq_len', type=int, default=16)
     parser.add_argument('--batch_size', type=int, default=8)
     parser.add_argument('--data_dim', type=int, default=32)
-    parser.add_argument('--use_noise', type=int, default=1)
+    parser.add_argument('--use_shortcut', type=int, default=0)
+    parser.add_argument('--use_crop', type=int, default=1)
+    parser.add_argument('--use_scale', type=int, default=1)
+    parser.add_argument('--use_compression', type=int, default=1)
     parser.add_argument('--use_critic', type=int, default=1)
     parser.add_argument('--use_adversary', type=int, default=1)
     run(parser.parse_args())

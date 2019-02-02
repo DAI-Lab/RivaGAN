@@ -7,7 +7,7 @@ from torch.utils.data import Dataset, DataLoader
 
 class VideoDataset(Dataset):
 
-    def __init__(self, root_dir, seq_len=10, center_crop=False):
+    def __init__(self, root_dir, seq_len=10, center_crop=(128, 128)):
         self.seq_len = seq_len
         self.center_crop = center_crop
         
@@ -25,22 +25,18 @@ class VideoDataset(Dataset):
         start_idx = randint(0, nb_frames - self.seq_len - 1)
         
         cap = cv2.VideoCapture(path)
-        cap.set(cv2.CAP_PROP_POS_FRAMES, start_idx)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_idx-1)
+        ok, frame = cap.read()
+        H, W, D = frame.shape
+        dx, dy = self.center_crop # target size
+        x = randint(0, W-dx-1)
+        y = randint(0, H-dy-1)
         
         frames = []
         for _ in range(self.seq_len):
             ok, frame = cap.read()
-            assert ok
-
-            H, W, D = frame.shape
-            assert D == 3
-
-            if self.center_crop:
-                new_H, new_W = self.center_crop
-                frame = frame[H//2-new_H//2:H//2+new_H//2, W//2-new_W//2:W//2+new_W//2]
-
+            frame = frame[y:y+dy,x:x+dx]
             frames.append(frame / 127.5 - 1.0)
-
         x = torch.FloatTensor(frames)
         x = x.permute(3, 0, 1, 2)
         return x
@@ -48,12 +44,12 @@ class VideoDataset(Dataset):
 def load_train_val(seq_len, batch_size):
     train = DataLoader(VideoDataset(
         "data/hollywood2/train", 
-        center_crop=(200, 300), 
+        center_crop=(128, 128), 
         seq_len=seq_len,
     ), shuffle=True, num_workers=8, batch_size=batch_size)
     val = DataLoader(VideoDataset(
         "data/hollywood2/val", 
-        center_crop=(200, 300),
+        center_crop=(128, 128),
         seq_len=seq_len,
     ), shuffle=False, num_workers=8, batch_size=batch_size)
     return train, val
