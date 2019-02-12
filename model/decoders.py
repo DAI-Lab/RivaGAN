@@ -12,20 +12,19 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
         self.data_dim = data_dim
         self._conv = nn.Sequential(
-            nn.Conv3d(3, 16, kernel_size=(1,5,5), padding=(0,2,2), stride=1),
-            nn.LeakyReLU(inplace=True),
-            nn.InstanceNorm3d(16),
-            nn.Conv3d(16, 32, kernel_size=(1,5,5), padding=(0,2,2), stride=(1, 2, 2)),
-            nn.LeakyReLU(inplace=True),
+            nn.Conv3d(3, 32, kernel_size=(1,7,7), padding=(0,3,3), stride=1),
+            nn.Tanh(),
             nn.InstanceNorm3d(32),
-            nn.Conv3d(32, 48, kernel_size=(1,5,5), padding=(0,2,2), stride=1),
-            nn.LeakyReLU(inplace=True),
-            nn.InstanceNorm3d(48),
-            nn.Conv3d(48, 64, kernel_size=(3,5,5), padding=(1,2,2), stride=1),
+            nn.Conv3d(32, 64, kernel_size=(1,7,7), padding=(0,3,3), stride=(1, 2, 2)),
+            nn.Tanh(),
+            nn.InstanceNorm3d(64),
+            nn.Conv3d(64, 128, kernel_size=(1,7,7), padding=(0,3,3), stride=(1, 2, 2)),
+            nn.Tanh(),
+            nn.InstanceNorm3d(128),
         )
-        self._linear = nn.Linear(64, data_dim)
+        self._linear = nn.Linear(128, data_dim)
 
     def forward(self, frames):
         frames = self._conv(frames)
         N, _, L, H, W = frames.size()
-        return self._linear(torch.mean(frames.view(N, -1, L*H*W), dim=2))
+        return self._linear(torch.max(frames.view(N, -1, L*H*W), dim=2)[0])

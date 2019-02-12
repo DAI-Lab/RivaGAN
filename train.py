@@ -1,3 +1,4 @@
+import gc
 import os
 import json
 import torch
@@ -23,9 +24,7 @@ def run(args):
     with open(os.path.join(log_dir, "config.json"), "wt") as fout:
         fout.write(json.dumps(args.__dict__, indent=2, default=lambda o: str(o)))
 
-    if args.use_shortcut:
-        encoder = ShortcutEncoder(data_dim=args.data_dim).cuda()
-    else: encoder = Encoder(data_dim=args.data_dim).cuda()
+    encoder = Encoder(data_dim=args.data_dim).cuda()
     decoder = Decoder(data_dim=args.data_dim).cuda()
     critic = Critic().cuda()
     adversary = Adversary().cuda()
@@ -60,32 +59,35 @@ def run(args):
             "val.mse": [],
         }
 
+        gc.collect()
         iterator = tqdm(train, ncols=0)
         for frames in iterator:
-            frames = frames.cuda()
+            frames = torch.cat([frames, frames, frames, frames], dim=0).cuda()
             data = torch.zeros((frames.size(0), args.data_dim)).random_(0, 2).cuda()
-            wm_frames = encoder(frames, data)
-            wm_data = decoder(noise(wm_frames))
+            frames = torch.cat([frames, frames], dim=0).cuda()
+            data = torch.cat([data, 1.0 - data], dim=0).cuda()
 
             if args.use_critic or args.use_adversary:
-                d_opt.zero_grad()
                 loss = 0.0
+                wm_frames = encoder(frames, data)
                 if args.use_critic:
                     loss += torch.mean(critic(frames) - critic(wm_frames))
                 if args.use_adversary:
-                    adv_frames = adversary(wm_frames)
-                    loss += F.mse_loss(adv_frames, frames)
-                    loss -= F.binary_cross_entropy_with_logits(decoder(adv_frames), data)
-                loss.backward(retain_graph=True)
+                    loss -= F.binary_cross_entropy_with_logits(decoder(adversary(wm_frames)), data)
+                d_opt.zero_grad()
+                loss.backward()
+                d_opt.step()
                 for p in critic.parameters():
                     p.data.clamp_(-0.01, 0.01)
-                d_opt.step()
 
             loss = 0.0
-            loss += 10.0 * F.mse_loss(wm_frames, frames)
+            wm_frames = encoder(frames, data)
+            wm_data = decoder(noise(wm_frames))
             loss += F.binary_cross_entropy_with_logits(wm_data, data)
             if args.use_critic:
                 loss += torch.mean(critic(wm_frames))
+            if args.use_adversary:
+                loss += F.binary_cross_entropy_with_logits(decoder(adversary(wm_frames)), data)
             g_opt.zero_grad()
             loss.backward()
             g_opt.step()
@@ -100,12 +102,13 @@ def run(args):
                 np.mean(metrics["train.acc"])
             ))
 
+        gc.collect()
         iterator = tqdm(val, ncols=0)
         for frames in iterator:
             frames = frames.cuda()
             data = torch.zeros((frames.size(0), args.data_dim)).random_(0, 2).cuda()
             wm_frames = encoder(frames, data)
-            wm_data = decoder(noise(wm_frames))
+            wm_data = decoder(wm_frames)
             metrics["val.acc"].append((wm_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
             metrics["val.mse"].append(F.mse_loss(wm_frames, frames).item())
             iterator.set_description("Epoch %s | Val MSE %s | Val Acc %s" % (
@@ -126,13 +129,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--epochs', type=int, default=64)
-    parser.add_argument('--seq_len', type=int, default=16)
+    parser.add_argument('--seq_len', type=int, default=1)
     parser.add_argument('--batch_size', type=int, default=8)
     parser.add_argument('--data_dim', type=int, default=32)
-    parser.add_argument('--use_shortcut', type=int, default=0)
-    parser.add_argument('--use_crop', type=int, default=1)
-    parser.add_argument('--use_scale', type=int, default=1)
-    parser.add_argument('--use_compression', type=int, default=1)
-    parser.add_argument('--use_critic', type=int, default=1)
-    parser.add_argument('--use_adversary', type=int, default=1)
+    parser.add_argument('--use_crop', type=int, default=0)
+    parser.add_argument('--use_scale', type=int, default=0)
+    parser.add_argument('--use_compression', type=int, default=0)
+    parser.add_argument('--use_critic', type=int, default=0)
+    parser.add_argument('--use_adversary', type=int, default=0)
     run(parser.parse_args())

@@ -10,16 +10,16 @@ import torch
 import random
 import numpy as np
 
-SEQ_LEN = 10
+SEQ_LEN = 3
 SEQ_LEN_MIDDLE = SEQ_LEN//2-1
 
 def handle(path_to_model, path_to_data="data/hollywood2/val/*.avi"):
     """
     Generate metrics for the given model.
     """
-    #if os.path.exists(path_to_model.replace("model.pt", "watermarked.avi")):
-    #    print("Skipping", path_to_model)
-    #    return
+    if os.path.exists(path_to_model.replace("model.pt", "watermarked.avi")):
+        print("Skipping", path_to_model)
+        return
     print("Processing", path_to_model)
 
     metrics = {
@@ -60,7 +60,7 @@ def handle(path_to_model, path_to_data="data/hollywood2/val/*.avi"):
     # Generate metrics
     videos = list(sorted(glob(path_to_data)))
     random.Random(4).shuffle(videos)
-    for video_path in videos[:256]:
+    for video_path in tqdm(videos[:100]):
         gc.collect()
         vin = cv2.VideoCapture(video_path)
         width = int(vin.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -69,7 +69,7 @@ def handle(path_to_model, path_to_data="data/hollywood2/val/*.avi"):
 
         frames = []
         nb_frames = min(int(vin.get(cv2.CAP_PROP_FRAME_COUNT)), 24)
-        for _ in tqdm(range(nb_frames), ncols=0):
+        for _ in range(nb_frames):
             ok, frame = vin.read()
             frames.append(frame)
             if len(frames) < SEQ_LEN:
@@ -95,10 +95,7 @@ def handle(path_to_model, path_to_data="data/hollywood2/val/*.avi"):
             metrics["acc.aspect_ratio"].append(acc)
 
             y_out = decoder(torch.clamp(torch.stack([
-                y.detach()[:,:,0,:,:],
-                y.detach()[:,:,2,:,:],
-                y.detach()[:,:,4,:,:],
-                y.detach()[:,:,6,:,:],
+                y.detach()[:,:,SEQ_LEN_MIDDLE,:,:],
             ], dim=2), min=-1.0, max=1.0))
             acc = (y_out >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel()
             metrics["acc.frame_rate"].append(acc)
