@@ -22,9 +22,12 @@ class Decoder(nn.Module):
             nn.Tanh(),
             nn.InstanceNorm3d(128),
         )
-        self._linear = nn.Linear(128, data_dim)
+        self._linear = nn.Linear(256, self.data_dim)
 
     def forward(self, frames):
         frames = self._conv(frames)
         N, _, L, H, W = frames.size()
-        return self._linear(torch.max(frames.view(N, -1, L*H*W), dim=2)[0])
+        return self._linear(torch.cat([
+            torch.max(frames.view(N, -1, L*H*W), dim=2)[0],
+            torch.min(frames.view(N, -1, L*H*W), dim=2)[0],
+        ], dim=1))

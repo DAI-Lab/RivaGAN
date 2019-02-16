@@ -30,4 +30,4 @@ class Adversary(nn.Module):
         x = frames
         x = self._conv1(x)
         x = self._conv2(x)
-        return frames + 0.01 * x
+        return frames + 0.0157 * x

@@ -5,7 +5,6 @@ from glob import glob
 
 rows = []
 for path_to_output in glob("results/**/output.json"):
-    print(path_to_output)
     output = json.load(open(path_to_output, "rt"))
     config = json.load(open(path_to_output.replace("output.json", "config.json"), "rt"))
     rows.append({**output, **config})
@@ -16,7 +15,7 @@ df["acc.aspect_ratio"] = round(df["acc.aspect_ratio"], 2)
 df["acc.frame_rate"] = round(df["acc.frame_rate"], 2)
 df["acc.identity"] = round(df["acc.identity"], 2)
 df["acc.transcoded"] = round(df["acc.transcoded"], 2)
-df["psnr"] = round(df["psnr"], 2)
+df["psnr"] = round(df["psnr"], 1)
 df["ssim"] = round(df["ssim"], 2)
 df.to_csv("results/summary.csv", index=False)
 print(df)

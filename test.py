@@ -9,9 +9,22 @@ import json
 import torch
 import random
 import numpy as np
+import scipy.stats
 
-SEQ_LEN = 3
+random.seed(42)
+np.random.seed(42)
+torch.manual_seed(42)
+clip_frame = True
+
+SEQ_LEN = 1
 SEQ_LEN_MIDDLE = SEQ_LEN//2-1
+
+def mean_confidence_interval(data, confidence=0.95):
+    a = 1.0 * np.array(data)
+    n = len(a)
+    m, se = np.mean(a), scipy.stats.sem(a)
+    h = se * scipy.stats.t.ppf((1 + confidence) / 2., n-1)
+    return m, h
 
 def handle(path_to_model, path_to_data="data/hollywood2/val/*.avi"):
     """
@@ -36,12 +49,12 @@ def handle(path_to_model, path_to_data="data/hollywood2/val/*.avi"):
 
     # Create an example video
     frames = []
-    vin = cv2.VideoCapture("data/hollywood2/val/actioncliptest00015.avi")
+    vin = cv2.VideoCapture("data/hollywood2/val/actioncliptest00017.avi")
     width = int(vin.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(vin.get(cv2.CAP_PROP_FRAME_HEIGHT))
     vout1 = cv2.VideoWriter(path_to_model.replace("model.pt", "source.avi"), cv2.VideoWriter_fourcc(*'XVID'), 20.0, (width, height))
     vout2 = cv2.VideoWriter(path_to_model.replace("model.pt", "watermarked.avi"), cv2.VideoWriter_fourcc(*'XVID'), 20.0, (width, height))
-    for _ in tqdm(range(int(vin.get(cv2.CAP_PROP_FRAME_COUNT))), ncols=0):
+    for _ in tqdm(range(int(vin.get(cv2.CAP_PROP_FRAME_COUNT))), "Example Video"):
         ok, frame = vin.read()
         frames.append(frame)
         if len(frames) < SEQ_LEN:
@@ -60,18 +73,23 @@ def handle(path_to_model, path_to_data="data/hollywood2/val/*.avi"):
     # Generate metrics
     videos = list(sorted(glob(path_to_data)))
     random.Random(4).shuffle(videos)
-    for video_path in tqdm(videos[:100]):
+    for video_path in tqdm(videos[:100], "Evaluation Metrics"):
         gc.collect()
         vin = cv2.VideoCapture(video_path)
         width = int(vin.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(vin.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        vout = cv2.VideoWriter("/tmp/output.avi", cv2.VideoWriter_fourcc(*'XVID'), 20.0, (width, height))
+        if clip_frame:
+            width, height = 128, 128
+        vout = cv2.VideoWriter("/tmp/output.avi", cv2.VideoWriter_fourcc(*'MJPG'), 20.0, (width, height))
+
+        nb_frames = min(int(vin.get(cv2.CAP_PROP_FRAME_COUNT)), 10)
+        start_idx = randint(1, int(vin.get(cv2.CAP_PROP_FRAME_COUNT)) - nb_frames - 1)
+        vin.set(cv2.CAP_PROP_POS_FRAMES, start_idx-1)
 
         frames = []
-        nb_frames = min(int(vin.get(cv2.CAP_PROP_FRAME_COUNT)), 24)
         for _ in range(nb_frames):
             ok, frame = vin.read()
-            frames.append(frame)
+            frames.append(frame[:width, :height])
             if len(frames) < SEQ_LEN:
                 continue
             frames = frames[-SEQ_LEN:]
@@ -103,7 +121,7 @@ def handle(path_to_model, path_to_data="data/hollywood2/val/*.avi"):
 
         frames = []
         vin = cv2.VideoCapture("/tmp/output.avi")
-        for _ in tqdm(range(int(vin.get(cv2.CAP_PROP_FRAME_COUNT))), ncols=0):
+        for _ in range(int(vin.get(cv2.CAP_PROP_FRAME_COUNT))):
             ok, frame = vin.read()
             frames.append(frame)
             if len(frames) < SEQ_LEN:
@@ -117,8 +135,14 @@ def handle(path_to_model, path_to_data="data/hollywood2/val/*.avi"):
             metrics["acc.transcoded"].append(acc)
 
         with open(path_to_model.replace("model.pt", "output.json"), "wt") as fout:
-            json.dump({k: sum(v) / len(v) for k, v in metrics.items() if v}, fout, indent=2)
+            obj = {}
+            for k, v in metrics.items():
+                if not v:
+                    continue
+                obj[k], _ = mean_confidence_interval(v)
+            json.dump(obj, fout, indent=2)
+    quit()
 
 with torch.no_grad():
-    for path_to_model in glob("results/**/model.pt"):
+    for path_to_model in sorted(glob("results/**/model.pt")):
         handle(path_to_model)

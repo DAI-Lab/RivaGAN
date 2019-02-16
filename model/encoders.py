@@ -27,7 +27,7 @@ class Encoder(nn.Module):
             nn.InstanceNorm3d(32),
         )
         self._conv4 = nn.Sequential(
-            nn.Conv3d(32+data_dim, 3, kernel_size=(1,7,7), padding=(0,3,3), stride=1),
+            nn.Conv3d(32+data_dim, 3, kernel_size=(1,1,1), padding=(0,0,0), stride=1),
             nn.Tanh(),
         )
 
@@ -57,4 +57,4 @@ class Encoder(nn.Module):
         ], dim=1)
         x = self._conv4(x)
 
-        return frames + 0.01 * x
+        return frames + 0.0157 * x

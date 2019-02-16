@@ -35,7 +35,10 @@ def run(args):
     if args.use_scale:
         noise_layers.append(Scale())
     if args.use_compression:
-        noise_layers.append(Compression())
+        if args.use_yuv:
+            noise_layers.append(YUVCompression())
+        else:
+            noise_layers.append(Compression())
     def noise(x):
         for layer in noise_layers:
             if random() < 0.5:
@@ -62,7 +65,7 @@ def run(args):
         gc.collect()
         iterator = tqdm(train, ncols=0)
         for frames in iterator:
-            frames = torch.cat([frames, frames, frames, frames], dim=0).cuda()
+            frames = torch.cat([frames, frames, frames, frames, frames, frames], dim=0).cuda()
             data = torch.zeros((frames.size(0), args.data_dim)).random_(0, 2).cuda()
             frames = torch.cat([frames, frames], dim=0).cuda()
             data = torch.cat([data, 1.0 - data], dim=0).cuda()
@@ -127,14 +130,15 @@ def run(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--epochs', type=int, default=64)
+    parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--seq_len', type=int, default=1)
     parser.add_argument('--batch_size', type=int, default=8)
     parser.add_argument('--data_dim', type=int, default=32)
     parser.add_argument('--use_crop', type=int, default=0)
     parser.add_argument('--use_scale', type=int, default=0)
     parser.add_argument('--use_compression', type=int, default=0)
+    parser.add_argument('--use_yuv', type=int, default=0)
     parser.add_argument('--use_critic', type=int, default=0)
     parser.add_argument('--use_adversary', type=int, default=0)
     run(parser.parse_args())
