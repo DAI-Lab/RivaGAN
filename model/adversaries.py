@@ -10,24 +10,21 @@ class Adversary(nn.Module):
 
     def __init__(self):
         super(Adversary, self).__init__()
-        self._conv1 = nn.Sequential(
+        self._conv = nn.Sequential(
             nn.Conv3d(3, 32, kernel_size=(1,7,7), padding=(0,3,3), stride=1),
-            nn.Tanh(),
+            nn.ELU(),
             nn.InstanceNorm3d(32),
             nn.Conv3d(32, 64, kernel_size=(1,7,7), padding=(0,3,3), stride=(1, 2, 2)),
-            nn.Tanh(),
+            nn.ELU(),
             nn.InstanceNorm3d(64),
-        )
-        self._conv2 = nn.Sequential(
-            nn.ConvTranspose3d(64, 32, kernel_size=(1,7,7), padding=(0,3,3), stride=(1, 2, 2), output_padding=(0, 1, 1)),
-            nn.Tanh(),
-            nn.InstanceNorm3d(32),
-            nn.Conv3d(32, 3, kernel_size=(1,7,7), padding=(0,3,3), stride=1),
+            nn.ConvTranspose3d(64, 128, kernel_size=(1,7,7), padding=(0,3,3), stride=(1, 2, 2), output_padding=(0, 1, 1)),
+            nn.ELU(),
+            nn.InstanceNorm3d(128),
+            nn.Conv3d(128, 3, kernel_size=(1,1,1), padding=(0,0,0), stride=1),
             nn.Tanh(),
         )
 
     def forward(self, frames):
         x = frames
-        x = self._conv1(x)
-        x = self._conv2(x)
+        x = self._conv(x)
         return frames + 0.0157 * x

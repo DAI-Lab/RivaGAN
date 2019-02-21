@@ -1,8 +1,0 @@
-{
-  "ssim": 0.9694092898368836,
-  "psnr": 47.02187464904785,
-  "acc.identity": 0.9578125,
-  "acc.aspect_ratio": 0.9274375,
-  "acc.frame_rate": 0.9578125,
-  "acc.transcoded": 0.5035
-}
