@@ -26,8 +26,9 @@ class Encoder(nn.Module):
     Output: (N, 3, L, H, W)
     """
 
-    def __init__(self, data_dim):
+    def __init__(self, data_dim, l1_max=0.1):
         super(Encoder, self).__init__()
+        self.l1_max = l1_max
         self.data_dim = data_dim
         self._conv1 = nn.Sequential(
             nn.Conv3d(3, 32, kernel_size=(1,7,7), padding=(0,3,3), stride=1),
@@ -55,4 +56,4 @@ class Encoder(nn.Module):
         x = self._conv2(spatial_repeat(x, data))
         x = self._conv3(spatial_repeat(x, data))
         x = self._conv4(spatial_repeat(x, data))
-        return frames + 0.0157 * x
+        return frames + self.l1_max * x

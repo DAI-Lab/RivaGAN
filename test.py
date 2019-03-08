@@ -1,7 +1,9 @@
+import gc
 import cv2
 import json
 import torch
 import random
+import imageio
 import numpy as np
 from model import *
 from glob import glob
@@ -16,6 +18,7 @@ SEQ_LEN_MIDDLE = SEQ_LEN//2
 
 def create_video(path_to_model):
     # Create an example video
+    gc.collect()
     data = torch.tensor([[0.0]*10 + [1.0] * 22]).cuda()
     encoder, decoder, _, _ = torch.load(path_to_model)
     encoder, decoder = map(lambda x: x.cuda(), (encoder, decoder))
@@ -41,8 +44,9 @@ def create_video(path_to_model):
         image = torch.clamp(y[0,:,SEQ_LEN_MIDDLE,:,:].permute(1,2,0), min=-1.0, max=1.0)
         vout2.write(((image + 1.0) * 127.5).detach().cpu().numpy().astype("uint8"))
 
-def generate_metrics(path_to_model, path_to_data="data/hollywood2/val/*.avi"):
+def generate_metrics(path_to_model, path_to_data="data/hollywood2/val/*.avi", key="val"):
     # Generate metrics
+    gc.collect()
     metrics = {
         "ssim": [],
         "psnr": [],
@@ -57,10 +61,13 @@ def generate_metrics(path_to_model, path_to_data="data/hollywood2/val/*.avi"):
 
     videos = list(sorted(glob(path_to_data)))
     random.Random(4).shuffle(videos)
-    for video_path in tqdm(videos[:10], "generate_metrics"):
+    for video_path in tqdm(videos[:32], "generate_metrics"):
+        gc.collect()
         vin = cv2.VideoCapture(video_path)
         width = int(vin.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(vin.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        height, width = 4*(height//8), 4*(width//8)
+        height, width = min(128, height), min(128, width) # ???
         vout = cv2.VideoWriter("/tmp/output.avi", cv2.VideoWriter_fourcc(*'MJPG'), 20.0, (width, height))
 
         nb_frames = min(int(vin.get(cv2.CAP_PROP_FRAME_COUNT)), 10)
@@ -69,8 +76,9 @@ def generate_metrics(path_to_model, path_to_data="data/hollywood2/val/*.avi"):
 
         frames = []
         for _ in range(nb_frames):
+            gc.collect()
             ok, frame = vin.read()
-            frames.append(frame)
+            frames.append(frame[:height,:width])
             if len(frames) < SEQ_LEN:
                 continue
             frames = frames[-SEQ_LEN:]
@@ -80,6 +88,7 @@ def generate_metrics(path_to_model, path_to_data="data/hollywood2/val/*.avi"):
             y = encoder(x, data)                          # (1, 3, L, H, W)
 
             image = torch.clamp(y[0,:,SEQ_LEN_MIDDLE,:,:].permute(1,2,0), min=-1.0, max=1.0)
+            image = ((image + 1.0) * 127.5).int().float() / 127.5 - 1.0 # quantize
             vout.write(((image + 1.0) * 127.5).detach().cpu().numpy().astype("uint8"))
 
             metrics["ssim"].append(ssim(x[:,:,SEQ_LEN_MIDDLE,:,:], y[:,:,SEQ_LEN_MIDDLE,:,:]).item())
@@ -115,11 +124,13 @@ def generate_metrics(path_to_model, path_to_data="data/hollywood2/val/*.avi"):
             acc = (y_out >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel()
             metrics["acc.transcoded"].append(acc)
 
-    with open(path_to_model.replace("model.pt", "output.json"), "wt") as fout:
+    imageio.imwrite(path_to_model.replace("model.pt", "example.png"), frame)
+    with open(path_to_model.replace("model.pt", "%s.json" % key), "wt") as fout:
         json.dump({k: np.mean(v) for k, v in metrics.items()}, fout, indent=2)
 
 with torch.no_grad():
-    for path_to_model in sorted(glob("results/**/model.pt")):
+    for path_to_model in sorted(glob("results/*/model.pt")):
         print(path_to_model)
-        create_video(path_to_model)
-        generate_metrics(path_to_model)
+        #create_video(path_to_model)
+        generate_metrics(path_to_model, path_to_data="data/hollywood2/train/*.avi", key="train")
+        generate_metrics(path_to_model, path_to_data="data/hollywood2/val/*.avi", key="val")

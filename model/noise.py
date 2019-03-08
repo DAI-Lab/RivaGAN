@@ -1,6 +1,10 @@
+import os
+import cv2
 import torch
 import torch.nn as nn
 import torch_dct as dct
+import torch.optim as optim
+import torch.nn.functional as F
 from random import random, randint
 
 class Crop(nn.Module):
@@ -47,7 +51,7 @@ class Compression(nn.Module):
     Output: (N, 3, L, H, W)
     """
 
-    def __init__(self, yuv=True, min_pct=0.0, max_pct=0.5):
+    def __init__(self, yuv=False, min_pct=0.0, max_pct=0.5):
         super(Compression, self).__init__()
         self.yuv = yuv
         self.min_pct = min_pct
@@ -82,10 +86,82 @@ class Compression(nn.Module):
 
         return y
 
+job_id = randint(0, 100)
+
+def mjpeg(x):
+    """
+    Write each video to disk and re-read it from disk.
+
+    Input: (N, 3, L, H, W)
+    Output: (N, 3, L, H, W)
+    """
+    y = torch.zeros(x.size())
+    _, _, _, height, width = x.size()
+    for n in range(x.size(0)):
+        vout = cv2.VideoWriter("/tmp/%s.avi" % job_id, cv2.VideoWriter_fourcc(*'MJPG'), 20.0, (width, height))
+        for l in range(x.size(2)):
+            image = x[n,:,l,:,:] # (3, H, W)
+            image = torch.clamp(image.permute(1,2,0), min=-1.0, max=1.0)
+            vout.write(((image + 1.0) * 127.5).detach().cpu().numpy().astype("uint8"))
+        vout.release()
+
+        vin = cv2.VideoCapture("/tmp/%s.avi" % job_id)
+        for l in range(x.size(2)):
+            _, frame = vin.read() # (H, W, 3)
+            frame = torch.tensor(frame / 127.5 - 1.0)
+            y[n,:,l,:,:] = frame.permute(2,0,1)
+    return y.to(x.device)
+
+class AdaptiveCompression(nn.Module):
+    """
+    Input: (N, 3, L, H, W)
+    Output: (N, 3, L, H, W)
+    """
+
+    def __init__(self):
+        super(AdaptiveCompression, self).__init__()
+        self.compress = nn.Sequential(
+            nn.Conv3d(3, 3, kernel_size=(3,15,15), padding=(1,7,7)),
+            nn.Tanh(),
+        ).cuda()
+        self.optimizer = optim.SGD(self.compress.parameters(), lr=1e-6)
+
+    def adapt(self, frames, steps=2):
+        self.optimizer.zero_grad()
+        y = frames.detach()
+        y = torch.clamp(y, min=-1.0, max=1.0)
+        loss = F.mse_loss(self.forward(y, adapt=False, require_grad=True), mjpeg(y))
+        loss.backward(retain_graph=True)
+        self.optimizer.step()
+
+        print()
+        print("-"*100)
+        print("Adaptive ", loss.item())
+        print("DCT (YUV)", F.mse_loss(Compression(yuv=True)(frames), mjpeg(frames)).item())
+        print("DCT (RGB)", F.mse_loss(Compression(yuv=False)(frames), mjpeg(frames)).item())
+        print("-"*100)
+
+    def forward(self, frames, adapt=True, require_grad=False):
+        # Update learned compression
+        #if adapt:
+        #    self.adapt(frames)
+
+        # Randomly return the actual compression result. This will stop the gradients from 
+        # flowing to the encoder but will help the decoder by providing a more accurate signal.
+        if not require_grad and random() < 0.5:
+            return mjpeg(frames)
+
+        # Use learned compression
+        x = frames
+        x = torch.clamp(x, min=-1.0, max=1.0)
+        x = x + 0.0157 * (2.0*torch.rand(x.size()).to(x.device)-1.0) #self.compress(x)
+        x = torch.clamp(x, min=-1.0, max=1.0)
+        return x
+
 if __name__ == "__main__":
-    N, L, H, W = 100, 1, 100, 100
-    model = Compression()
-    x = torch.randn((N, 3, L, H, W))
-    y = model(x)
-    print(torch.mean(torch.abs(x - y)))
-    pass
+    model = AdaptiveCompression().cuda()
+    for epoch in range(100):
+        N, L, H, W = 32, randint(1, 5), 2*randint(64, 128), 2*randint(64, 128)
+        x = torch.rand((N, 3, L, H, W)).cuda() * 2.0 - 1.0
+        y = model(x, adapt=True)
+        print(epoch, torch.mean(torch.abs(x - y)).item())

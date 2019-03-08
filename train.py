@@ -27,14 +27,17 @@ def run(args):
     if args.use_crop: _noise.append(Crop())
     if args.use_scale: _noise.append(Scale())
     if args.use_compression: _noise.append(Compression())
+    if args.use_jpeg_compression: _noise.append(JpegCompression(torch.device("cuda")))
+    if args.use_adaptive_compression: _noise.append(AdaptiveCompression().cuda())
+        
     def noise(x):
         for layer in _noise:
-            if random.random() < 0.5:
+            if random.random() < 0.8:
                 x = layer(x)
         return x
     
     # Initialize our modules and optimizers
-    encoder = Encoder(data_dim=args.data_dim).cuda()
+    encoder = Encoder(data_dim=args.data_dim, l1_max=0.05).cuda()
     decoder = Decoder(data_dim=args.data_dim).cuda()
     critic, adversary = Critic().cuda(), Adversary().cuda()
 
@@ -44,10 +47,12 @@ def run(args):
     xoptimizer_scheduler = optim.lr_scheduler.ReduceLROnPlateau(xoptimizer)
 
     # Set up the log directory
-    log_dir = os.path.join("results/", "n%s%s%s-m%s%s-%s" % (
+    log_dir = os.path.join("results/", "n%s%s%s%s%s-m%s%s-%s" % (
         args.use_crop,
         args.use_scale,
         args.use_compression,
+        args.use_adaptive_compression,
+        args.use_jpeg_compression,
         args.use_critic,
         args.use_adversary,
         str(int(time()))
@@ -98,7 +103,10 @@ def run(args):
             # regular training
             loss = 0.0
             wm_frames = encoder(frames, data)
-            wm_data = decoder(noise(wm_frames))
+            if True: # give the decoder real compressed data
+                wm_data = decoder(mjpeg(wm_frames))
+                loss += F.binary_cross_entropy_with_logits(wm_data, data)
+            wm_data = decoder(noise(wm_frames + (torch.rand(wm_frames.size()).cuda()*4.0-2.0) / 127.5))
             loss += F.binary_cross_entropy_with_logits(wm_data, data)
             if args.use_critic:
                 loss += torch.mean(critic(wm_frames))
@@ -156,6 +164,8 @@ if __name__ == "__main__":
     parser.add_argument('--use_crop', type=int, default=0)
     parser.add_argument('--use_scale', type=int, default=0)
     parser.add_argument('--use_compression', type=int, default=0)
+    parser.add_argument('--use_jpeg_compression', type=int, default=0)
+    parser.add_argument('--use_adaptive_compression', type=int, default=0)
 
     parser.add_argument('--use_critic', type=int, default=0)
     parser.add_argument('--use_adversary', type=int, default=0)
