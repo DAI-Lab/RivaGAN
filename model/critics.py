@@ -4,6 +4,8 @@ import torch.nn.functional as F
 
 class Critic(nn.Module):
     """
+    The Critic module maps a sequence of frames to a scalar score.
+
     Input: (N, 3, L, H, W)
     Output: (N, 1)
     """

@@ -1,6 +1,7 @@
 __pycache__
 .DS_Store
 *.avi
+*.mp4
 ._.*
 *.pyc
 

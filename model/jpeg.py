@@ -15,17 +15,6 @@ def gen_filters(size_x: int, size_y: int, dct_or_idct_fun: callable) -> np.ndarr
                                                                                                             size_x)
     return filters
 
-# def zigzag_indices(shape: (int, int), count):
-#     x_range, y_range = shape
-#     index_order = sorted(((x, y) for x in range(x_range) for y in range(y_range)),
-#                          key=lambda p: (p[0] + p[1], -p[1] if (p[0] + p[1]) % 2 else p[1]))
-#
-#     mask = np.zeros(shape)
-#     for r, c in index_order[:count]:
-#         mask[r,c] = 1
-#
-#     return mask
-
 def get_jpeg_yuv_filter_mask(image_shape: tuple, window_size: int, keep_count: int):
     mask = np.zeros((window_size, window_size), dtype=np.uint8)
 

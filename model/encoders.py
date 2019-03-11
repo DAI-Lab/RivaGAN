@@ -22,11 +22,15 @@ def spatial_repeat(x, data):
 
 class Encoder(nn.Module):
     """
+    The Encoder module maps a sequence of frames and a fixed-length bit 
+    vector to another sequence of frames with a constraint on the maximum 
+    distortion of each individual pixel.
+
     Input: (N, 3, L, H, W), (N, D,)
     Output: (N, 3, L, H, W)
     """
 
-    def __init__(self, data_dim, l1_max=0.1):
+    def __init__(self, data_dim, l1_max=0.05):
         super(Encoder, self).__init__()
         self.l1_max = l1_max
         self.data_dim = data_dim

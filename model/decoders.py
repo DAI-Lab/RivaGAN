@@ -4,6 +4,8 @@ import torch.nn.functional as F
 
 class Decoder(nn.Module):
     """
+    The Critic module maps a sequence of frames to a fixed-length vector.
+
     Input: (N, 3, L, H, W)
     Output: (N, D)
     """
@@ -18,11 +20,11 @@ class Decoder(nn.Module):
             nn.Conv3d(32, 64, kernel_size=(1,7,7), stride=(1, 2, 2)),
             nn.ELU(),
             nn.InstanceNorm3d(64),
-            nn.Conv3d(64, 128, kernel_size=(1,7,7), stride=(1, 2, 2)),
+            nn.Conv3d(64, 128, kernel_size=(1,7,7)),
             nn.ELU(),
             nn.InstanceNorm3d(128),
         )
-        self._pool = nn.MaxPool3d(kernel_size=(1,12,12), stride=(1, 6, 6))
+        self._pool = nn.MaxPool3d(kernel_size=(1,16,16), stride=(1, 4, 4))
         self._1x1 = nn.Conv3d(256, self.data_dim, kernel_size=(1,1,1))
 
     def forward(self, frames):

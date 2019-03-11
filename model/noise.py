@@ -45,6 +45,20 @@ class Scale(nn.Module):
         H, W = int(pct * old_H), int(pct * old_W)
         return nn.AdaptiveAvgPool3d((old_D, H, W))(frames)
 
+class Quantization(nn.Module):
+    """
+    Input: (N, 3, L, H, W)
+    Output: (N, 3, L, H, W)
+    """
+
+    def __init__(self):
+        super(Quantization, self).__init__()
+
+    def forward(self, frames):
+        one_bit_change = 2.0 * (1.0 / 255.0)
+        noise = 2.0 * one_bit_change * torch.randn_like(frames)
+        return frames + noise
+
 class Compression(nn.Module):
     """
     Input: (N, 3, L, H, W)
