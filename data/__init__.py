@@ -61,10 +61,10 @@ def load_train_val(seq_len, batch_size, dataset="hollywood2"):
         "data/%s/train" % dataset, 
         crop_size=(128, 128), 
         seq_len=seq_len,
-    ), shuffle=True, num_workers=8, batch_size=batch_size)
+    ), shuffle=True, num_workers=16, batch_size=batch_size)
     val = DataLoader(VideoDataset(
         "data/%s/val" % dataset, 
         crop_size=(128, 128),
         seq_len=seq_len,
-    ), shuffle=False, num_workers=8, batch_size=batch_size)
+    ), shuffle=False, num_workers=16, batch_size=batch_size)
     return train, val

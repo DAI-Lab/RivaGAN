@@ -9,7 +9,7 @@ mkdir hollywood2/val
 mv hollywood2/AVIClips/*test*.avi hollywood2/val/
 
 # Moments in Tine
-wget http://data.csail.mit.edu/soundnet/actions3/split1/Moments_in_Time_Mini.zip&sa=D&ust=1552312591310000&usg=AFQjCNEV7elAByZmegUXkqCISLAgm7ds9w -O Moments_in_Time_Mini.zip
+wget http://data.csail.mit.edu/soundnet/actions3/split1/Moments_in_Time_Mini.zip
 unzip Moments_in_Time_Mini.zip
 rm Moments_in_Time_Mini.zip
 mv Moments_in_Time_Mini moments-in-time

@@ -26,8 +26,8 @@ def run(args):
     _noise = [Quantization()]
     if args.use_crop: _noise.append(Crop())
     if args.use_scale: _noise.append(Scale())
-    if args.use_compression: _noise.append(Compression())
-    if args.use_jpeg_compression: _noise.append(JpegCompression(torch.device("cuda")))
+    if args.use_dct: _noise.append(Compression(yuv=args.dct_yuv, max_pct=args.dct_max_pct))
+    if args.use_jpeg: _noise.append(JpegCompression(torch.device("cuda")))
         
     def noise(x):
         for layer in _noise:
@@ -35,8 +35,8 @@ def run(args):
         return x
     
     # Initialize our modules and optimizers
-    encoder = Encoder(data_dim=args.data_dim).cuda()
-    decoder = Decoder(data_dim=args.data_dim).cuda()
+    encoder = BigEncoder(data_dim=args.data_dim).cuda() if args.big else Encoder(data_dim=args.data_dim).cuda()
+    decoder = BigDecoder(data_dim=args.data_dim).cuda() if args.big else Decoder(data_dim=args.data_dim).cuda()
     critic, adversary = Critic().cuda(), Adversary().cuda()
 
     optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args.lr)
@@ -50,8 +50,8 @@ def run(args):
         args.use_adversary,
         args.use_crop,
         args.use_scale,
-        args.use_compression,
-        args.use_jpeg_compression,
+        args.use_dct,
+        args.use_jpeg,
         str(int(time()))
     ))
     os.makedirs(log_dir, exist_ok=False)
@@ -69,7 +69,9 @@ def run(args):
             "val.raw_acc": [], 
             "val.mjpeg_acc": [], 
             "val.noise_acc": [],
-            "val.quantized_acc": []
+            "val.quantized_acc": [],
+            "val.ssim": [],
+            "val.psnr": []
         }
 
         # Train
@@ -128,13 +130,12 @@ def run(args):
             metrics["train.mjpeg_acc"].append((wm_mjpeg_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
             metrics["train.noise_acc"].append((wm_noise_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
 
-            iterator.set_description("%s | Loss %.3f | Raw %.3f | MJPEG %.3f | Noise %.3f | Quantized %.3f" % (
+            iterator.set_description("%s | Loss %.3f | Raw %.3f | MJPEG %.3f | Noise %.3f" % (
                 epoch, 
                 np.mean(metrics["train.loss"]), 
                 np.mean(metrics["train.raw_acc"]),
                 np.mean(metrics["train.mjpeg_acc"]),
                 np.mean(metrics["train.noise_acc"]),
-                np.mean(metrics["val.quantized_acc"]),
             ))
 
         # Validate
@@ -156,14 +157,20 @@ def run(args):
                 metrics["val.noise_acc"].append((wm_noise_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
                 metrics["val.quantized_acc"].append((wm_quantized_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
 
-                iterator.set_description("%s | Raw %.3f | MJPEG %.3f | Noise %.3f" % (
+                metrics["val.ssim"].append(ssim(frames[:,:,0,:,:], wm_frames[:,:,0,:,:]).item())
+                metrics["val.psnr"].append(psnr(frames[:,:,0,:,:], wm_frames[:,:,0,:,:]).item())
+
+                iterator.set_description("%s | Raw %.3f | MJPEG %.3f | Noise %.3f | Quantized %.3f | SSIM %.3f | PSNR %.3f" % (
                     epoch, 
                     np.mean(metrics["val.raw_acc"]),
                     np.mean(metrics["val.mjpeg_acc"]),
                     np.mean(metrics["val.noise_acc"]),
+                    np.mean(metrics["val.quantized_acc"]),
+                    np.mean(metrics["val.ssim"]),
+                    np.mean(metrics["val.psnr"]),
                 ))
 
-        metrics = {k: np.mean(v) for k, v in metrics.items()}
+        metrics = {k: round(np.mean(v), 3) for k, v in metrics.items()}
         metrics["epoch"] = epoch
         history.append(metrics)
         pd.DataFrame(history).to_csv(os.path.join(log_dir, "metrics.tsv"), index=False, sep="\t")
@@ -175,13 +182,13 @@ def run(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     
-    parser.add_argument('--lr', type=float, default=1e-4)
-    parser.add_argument('--epochs', type=int, default=128)
+    parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--dataset', type=str, default="hollywood2")
 
     parser.add_argument('--seq_len', type=int, default=1)
     parser.add_argument('--data_dim', type=int, default=32)
-    parser.add_argument('--batch_size', type=int, default=8)
+    parser.add_argument('--batch_size', type=int, default=12)
     parser.add_argument('--multiplicity', type=int, default=4)
     
     parser.add_argument('--use_critic', type=int, default=0)
@@ -189,7 +196,11 @@ if __name__ == "__main__":
 
     parser.add_argument('--use_crop', type=int, default=0)
     parser.add_argument('--use_scale', type=int, default=0)
-    parser.add_argument('--use_compression', type=int, default=0)
-    parser.add_argument('--use_jpeg_compression', type=int, default=0)
+    parser.add_argument('--use_dct', type=int, default=0)
+    parser.add_argument('--use_jpeg', type=int, default=0)
+
+    parser.add_argument('--big', type=int, default=0)
+    parser.add_argument('--dct_yuv', type=int, default=0)
+    parser.add_argument('--dct_max_pct', type=float, default=0.5)
 
     run(parser.parse_args())
