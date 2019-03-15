@@ -67,7 +67,6 @@ def generate_metrics(path_to_model, path_to_data="data/hollywood2/val/*.avi", ke
         width = int(vin.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(vin.get(cv2.CAP_PROP_FRAME_HEIGHT))
         height, width = 4*(height//8), 4*(width//8)
-        height, width = min(128, height), min(128, width) # ???
         vout = cv2.VideoWriter("/tmp/output.avi", cv2.VideoWriter_fourcc(*'MJPG'), 20.0, (width, height))
 
         nb_frames = min(int(vin.get(cv2.CAP_PROP_FRAME_COUNT)), 10)
@@ -131,6 +130,6 @@ def generate_metrics(path_to_model, path_to_data="data/hollywood2/val/*.avi", ke
 with torch.no_grad():
     for path_to_model in sorted(glob("results/*/model.pt")):
         print(path_to_model)
-        #create_video(path_to_model)
+        create_video(path_to_model)
         generate_metrics(path_to_model, path_to_data="data/hollywood2/train/*.avi", key="train")
         generate_metrics(path_to_model, path_to_data="data/hollywood2/val/*.avi", key="val")
