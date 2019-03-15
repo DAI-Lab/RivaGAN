@@ -1,0 +1,2 @@
+epoch	train.loss	train.mjpeg_acc	train.noise_acc	train.raw_acc	val.mjpeg_acc	val.noise_acc	val.psnr	val.quantized_acc	val.raw_acc	val.ssim
+1	2.794	0.504	0.502	0.503	0.502	0.501	42.122	0.503	0.502	0.958

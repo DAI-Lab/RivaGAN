@@ -18,6 +18,17 @@ random.seed(42)
 np.random.seed(42)
 torch.manual_seed(42)
 
+def make_pair(frames, args):
+    # Add multiplicity to stabilize training.
+    frames = torch.cat([frames] * args.multiplicity, dim=0).cuda()
+    data = torch.zeros((frames.size(0), args.data_dim)).random_(0, 2).cuda()
+
+    # Add the bit-inverse to further stabilize training.
+    frames = torch.cat([frames, frames], dim=0).cuda()
+    data = torch.cat([data, 1.0 - data], dim=0).cuda()
+
+    return frames, data
+
 def run(args):
     # Load our datasets
     train, val = load_train_val(args.seq_len, args.batch_size, args.dataset)
@@ -35,8 +46,8 @@ def run(args):
         return x
     
     # Initialize our modules and optimizers
-    encoder = BigEncoder(data_dim=args.data_dim).cuda() if args.big else Encoder(data_dim=args.data_dim).cuda()
-    decoder = BigDecoder(data_dim=args.data_dim).cuda() if args.big else Decoder(data_dim=args.data_dim).cuda()
+    encoder = Encoder(data_dim=args.data_dim).cuda()
+    decoder = Decoder(data_dim=args.data_dim).cuda()
     critic, adversary = Critic().cuda(), Adversary().cuda()
 
     optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args.lr)
@@ -78,22 +89,9 @@ def run(args):
         gc.collect()
         iterator = tqdm(train, ncols=0)
         for frames in iterator:
-            # Add multiplicity to stabilize training.
-            frames = torch.cat([frames] * args.multiplicity, dim=0).cuda()
-            data = torch.zeros((frames.size(0), args.data_dim)).random_(0, 2).cuda()
+            # Pair each sequence of frames with a data vector
+            frames, data = make_pair(frames, args)
 
-            # Add the bit-inverse to further stabilize training.
-            frames = torch.cat([frames, frames], dim=0).cuda()
-            data = torch.cat([data, 1.0 - data], dim=0).cuda()
-
-            """
-            # Random cropping to remove size dependencies.
-            w = random.choice(list(range(100, 128, 4)))
-            h = random.choice(list(range(100, 128, 4)))
-            frames = frames[:,:,:,:w,:h].cuda()
-            data = data.cuda()
-            """
-            
             # Adversarial training to optimize quality / robustness.
             if args.use_critic or args.use_adversary:
                 loss = 0.0
@@ -183,13 +181,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--epochs', type=int, default=100)
+    parser.add_argument('--epochs', type=int, default=200)
     parser.add_argument('--dataset', type=str, default="hollywood2")
 
     parser.add_argument('--seq_len', type=int, default=1)
     parser.add_argument('--data_dim', type=int, default=32)
     parser.add_argument('--batch_size', type=int, default=12)
-    parser.add_argument('--multiplicity', type=int, default=4)
+    parser.add_argument('--multiplicity', type=int, default=2)
     
     parser.add_argument('--use_critic', type=int, default=0)
     parser.add_argument('--use_adversary', type=int, default=0)
@@ -199,7 +197,6 @@ if __name__ == "__main__":
     parser.add_argument('--use_dct', type=int, default=0)
     parser.add_argument('--use_jpeg', type=int, default=0)
 
-    parser.add_argument('--big', type=int, default=0)
     parser.add_argument('--dct_yuv', type=int, default=0)
     parser.add_argument('--dct_max_pct', type=float, default=0.5)
 
