@@ -14,18 +14,21 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
         self.data_dim = data_dim
         self._conv = nn.Sequential(
-            nn.Conv3d(3, 32, kernel_size=(1,11,11)),
-            nn.ELU(),
+            nn.Conv3d(3, 32, kernel_size=(1,15,15)),
+            nn.ELU(inplace=True),
             nn.InstanceNorm3d(32),
-            nn.Conv3d(32, 64, kernel_size=(1,11,11), stride=(1, 2, 2)),
-            nn.ELU(),
+            nn.Conv3d(32, 64, kernel_size=(1,15,15)),
+            nn.ELU(inplace=True),
             nn.InstanceNorm3d(64),
-            nn.Conv3d(64, 128, kernel_size=(1,11,11)),
-            nn.ELU(),
+            nn.Conv3d(64, 128, kernel_size=(1,15,15)),
+            nn.ELU(inplace=True),
             nn.InstanceNorm3d(128),
+            nn.Conv3d(128, 256, kernel_size=(1,15,15)),
+            nn.ELU(inplace=True),
+            nn.InstanceNorm3d(256),
         )
-        self._pool = nn.MaxPool3d(kernel_size=(1,16,16), stride=(1, 4, 4))
-        self._1x1 = nn.Conv3d(256, self.data_dim, kernel_size=(1,1,1))
+        self._pool = nn.MaxPool3d(kernel_size=(1,15,15), stride=(1, 3, 3))
+        self._1x1 = nn.Conv3d(512, self.data_dim, kernel_size=(1,1,1))
 
     def forward(self, frames):
         frames = self._conv(frames)

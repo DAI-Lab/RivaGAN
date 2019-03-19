@@ -2,6 +2,7 @@ import os
 import cv2
 import torch
 from glob import glob
+from tqdm import tqdm
 from random import randint
 from torch.utils.data import Dataset, DataLoader
 
@@ -18,16 +19,21 @@ class VideoDataset(Dataset):
     The output has shape (3, seq_len, crop_size[0], crop_size[1]).
     """
 
-    def __init__(self, root_dir, seq_len=10, crop_size=(128, 128)):
+    def __init__(self, root_dir, seq_len=10, crop_size=(128, 128), max_videos=2000):
         self.seq_len = seq_len
         self.crop_size = crop_size
         
-        self.videos = []
+        paths = []
         for ext in ["avi", "mp4"]:
-            for path in glob(os.path.join(root_dir, "**/*.%s" % ext), recursive=True):
-                cap = cv2.VideoCapture(path)
-                nb_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                self.videos.append((path, nb_frames))
+            paths.extend(glob(os.path.join(root_dir, "**/*.%s" % ext), recursive=True))
+        if max_videos != -1 and len(paths) > max_videos:
+            paths = paths[:max_videos]
+
+        self.videos = []
+        for path in tqdm(paths, root_dir):
+            cap = cv2.VideoCapture(path)
+            nb_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            self.videos.append((path, nb_frames))
 
     def __len__(self):
         return len(self.videos)
@@ -59,12 +65,12 @@ class VideoDataset(Dataset):
 def load_train_val(seq_len, batch_size, dataset="hollywood2"):
     train = DataLoader(VideoDataset(
         "data/%s/train" % dataset, 
-        crop_size=(128, 128), 
+        crop_size=(100, 100), 
         seq_len=seq_len,
-    ), shuffle=True, num_workers=16, batch_size=batch_size, pin_memory=True)
+    ), shuffle=True, num_workers=32, batch_size=batch_size, pin_memory=True)
     val = DataLoader(VideoDataset(
         "data/%s/val" % dataset, 
-        crop_size=(128, 128),
+        crop_size=(100, 100),
         seq_len=seq_len,
-    ), shuffle=False, num_workers=16, batch_size=batch_size, pin_memory=True)
+    ), shuffle=False, num_workers=32, batch_size=batch_size, pin_memory=True)
     return train, val

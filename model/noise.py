@@ -13,7 +13,7 @@ class Crop(nn.Module):
     Output: (N, 3, L, H, W)
     """
 
-    def __init__(self, min_pct=0.8, max_pct=1.0):
+    def __init__(self, min_pct=0.9, max_pct=1.0):
         super(Crop, self).__init__()
         self.min_pct = min_pct
         self.max_pct = max_pct
@@ -34,7 +34,7 @@ class Scale(nn.Module):
     Output: (N, 3, L, H, W)
     """
 
-    def __init__(self, min_pct=0.8, max_pct=1.0):
+    def __init__(self, min_pct=0.9, max_pct=1.0):
         super(Scale, self).__init__()
         self.min_pct = min_pct
         self.max_pct = max_pct

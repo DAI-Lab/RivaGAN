@@ -17,6 +17,7 @@ from model import *
 random.seed(42)
 np.random.seed(42)
 torch.manual_seed(42)
+torch.backends.cudnn.benchmark = True
 
 def make_pair(frames, args):
     # Add multiplicity to stabilize training.
@@ -37,7 +38,6 @@ def run(args):
     _noise = [Quantization()]
     if args.use_crop: _noise.append(Crop())
     if args.use_scale: _noise.append(Scale())
-    if args.use_dct: _noise.append(Compression(yuv=args.dct_yuv, max_pct=args.dct_max_pct))
     if args.use_jpeg: _noise.append(JpegCompression(torch.device("cuda")))
         
     def noise(x):
@@ -56,13 +56,12 @@ def run(args):
     xoptimizer_scheduler = optim.lr_scheduler.ReduceLROnPlateau(xoptimizer)
 
     # Set up the log directory
-    log_dir = os.path.join("results/", "m%s%s-n%s%s%s%s-%s" % (
+    log_dir = os.path.join("results/", "m%s%s-n%s%s%s-%s" % (
         args.use_critic,
         args.use_adversary,
+        args.use_jpeg,
         args.use_crop,
         args.use_scale,
-        args.use_dct,
-        args.use_jpeg,
         str(int(time()))
     ))
     os.makedirs(log_dir, exist_ok=False)
@@ -113,7 +112,8 @@ def run(args):
             wm_mjpeg_data = decoder(mjpeg(wm_frames))
             wm_noise_data = decoder(noise(wm_frames))
             loss += F.binary_cross_entropy_with_logits(wm_data, data)
-            loss += F.binary_cross_entropy_with_logits(wm_mjpeg_data, data)
+            if args.use_jpeg:
+                loss += F.binary_cross_entropy_with_logits(wm_mjpeg_data, data)
             loss += F.binary_cross_entropy_with_logits(wm_noise_data, data)
             if args.use_critic:
                 loss += torch.mean(critic(wm_frames))
@@ -181,23 +181,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--epochs', type=int, default=200)
+    parser.add_argument('--epochs', type=int, default=300)
     parser.add_argument('--dataset', type=str, default="hollywood2")
 
     parser.add_argument('--seq_len', type=int, default=1)
     parser.add_argument('--data_dim', type=int, default=32)
-    parser.add_argument('--batch_size', type=int, default=12)
-    parser.add_argument('--multiplicity', type=int, default=2)
+    parser.add_argument('--batch_size', type=int, default=32)
+    parser.add_argument('--multiplicity', type=int, default=1)
     
     parser.add_argument('--use_critic', type=int, default=0)
     parser.add_argument('--use_adversary', type=int, default=0)
 
+    parser.add_argument('--use_jpeg', type=int, default=0)
     parser.add_argument('--use_crop', type=int, default=0)
     parser.add_argument('--use_scale', type=int, default=0)
-    parser.add_argument('--use_dct', type=int, default=0)
-    parser.add_argument('--use_jpeg', type=int, default=0)
-
-    parser.add_argument('--dct_yuv', type=int, default=0)
-    parser.add_argument('--dct_max_pct', type=float, default=0.5)
 
     run(parser.parse_args())

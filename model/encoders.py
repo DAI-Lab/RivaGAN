@@ -35,22 +35,22 @@ class Encoder(nn.Module):
         self.l1_max = l1_max
         self.data_dim = data_dim
         self._conv1 = nn.Sequential(
-            nn.Conv3d(3, 32, kernel_size=(1,11,11), padding=(0,5,5), stride=1),
-            nn.ELU(),
+            nn.Conv3d(3, 32, kernel_size=(1,15,15), padding=(0,7,7)),
+            nn.ELU(inplace=True),
             nn.InstanceNorm3d(32),
         )
         self._conv2 = nn.Sequential(
-            nn.Conv3d(32+data_dim, 64, kernel_size=(1,11,11), padding=(0,5,5), stride=(1, 2, 2)),
-            nn.ELU(),
+            nn.Conv3d(32+data_dim, 64, kernel_size=(1,15,15), padding=(0,7,7)),
+            nn.ELU(inplace=True),
             nn.InstanceNorm3d(64),
         )
         self._conv3 = nn.Sequential(
-            nn.ConvTranspose3d(64+data_dim, 128, kernel_size=(1,11,11), padding=(0,5,5), stride=(1, 2, 2), output_padding=(0, 1, 1)),
-            nn.ELU(),
+            nn.Conv3d(64+data_dim, 128, kernel_size=(1,15,15), padding=(0,7,7)),
+            nn.ELU(inplace=True),
             nn.InstanceNorm3d(128),
         )
         self._conv4 = nn.Sequential(
-            nn.Conv3d(128+data_dim, 3, kernel_size=(1,11,11), padding=(0,5,5), stride=1),
+            nn.Conv3d(128+data_dim, 3, kernel_size=(1,15,15), padding=(0,7,7)),
             nn.Tanh(),
         )
 
