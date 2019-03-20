@@ -22,27 +22,38 @@ def create_video(path_to_model):
     data = torch.tensor([[0.0]*10 + [1.0] * 22]).cuda()
     encoder, decoder, _, _ = torch.load(path_to_model)
     encoder, decoder = map(lambda x: x.cuda(), (encoder, decoder))
+    
+    for index, path in enumerate([
+            "data/hollywood2/val/actioncliptest00001.avi",
+            "data/hollywood2/val/actioncliptest00003.avi",
+            "data/hollywood2/val/actioncliptest00005.avi",
+            "data/hollywood2/val/actioncliptest00007.avi",
+            "data/hollywood2/val/actioncliptest00009.avi",
+            "data/hollywood2/val/actioncliptest00011.avi",
+            "data/hollywood2/val/actioncliptest00013.avi",
+            "data/hollywood2/val/actioncliptest00015.avi",
+        ]):
+        frames = []
+        vin = cv2.VideoCapture(path)
+        width = int(vin.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(vin.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        nb_frames = int(vin.get(cv2.CAP_PROP_FRAME_COUNT))
+        vout1 = cv2.VideoWriter(path_to_model.replace("model.pt", "source.%s.avi" % index), cv2.VideoWriter_fourcc(*'XVID'), 20.0, (width, height))
+        vout2 = cv2.VideoWriter(path_to_model.replace("model.pt", "watermarked.%s.avi" % index), cv2.VideoWriter_fourcc(*'XVID'), 20.0, (width, height))
+        for _ in tqdm(range(min(nb_frames, 100)), "create_video"):
+            ok, frame = vin.read()
+            frames.append(frame)
+            if len(frames) < SEQ_LEN:
+                continue
+            frames = frames[-SEQ_LEN:]
 
-    frames = []
-    vin = cv2.VideoCapture("data/hollywood2/val/actioncliptest00017.avi")
-    width = int(vin.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(vin.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    vout1 = cv2.VideoWriter(path_to_model.replace("model.pt", "source.avi"), cv2.VideoWriter_fourcc(*'XVID'), 20.0, (width, height))
-    vout2 = cv2.VideoWriter(path_to_model.replace("model.pt", "watermarked.avi"), cv2.VideoWriter_fourcc(*'XVID'), 20.0, (width, height))
-    for _ in tqdm(range(int(vin.get(cv2.CAP_PROP_FRAME_COUNT))), "create_video"):
-        ok, frame = vin.read()
-        frames.append(frame)
-        if len(frames) < SEQ_LEN:
-            continue
-        frames = frames[-SEQ_LEN:]
+            x = torch.FloatTensor(frames) / 127.5 - 1.0   # (L, H, W, 3)
+            x = x.permute(3, 0, 1, 2).unsqueeze(0).cuda() # (1, 3, L, H, W)
+            y = encoder(x, data)                          # (1, 3, L, H, W)
 
-        x = torch.FloatTensor(frames) / 127.5 - 1.0   # (L, H, W, 3)
-        x = x.permute(3, 0, 1, 2).unsqueeze(0).cuda() # (1, 3, L, H, W)
-        y = encoder(x, data)                          # (1, 3, L, H, W)
-
-        vout1.write(((x[0,:,SEQ_LEN_MIDDLE,:,:].permute(1,2,0) + 1.0) * 127.5).detach().cpu().numpy().astype("uint8"))
-        image = torch.clamp(y[0,:,SEQ_LEN_MIDDLE,:,:].permute(1,2,0), min=-1.0, max=1.0)
-        vout2.write(((image + 1.0) * 127.5).detach().cpu().numpy().astype("uint8"))
+            vout1.write(((x[0,:,SEQ_LEN_MIDDLE,:,:].permute(1,2,0) + 1.0) * 127.5).detach().cpu().numpy().astype("uint8"))
+            image = torch.clamp(y[0,:,SEQ_LEN_MIDDLE,:,:].permute(1,2,0), min=-1.0, max=1.0)
+            vout2.write(((image + 1.0) * 127.5).detach().cpu().numpy().astype("uint8"))
 
 def generate_metrics(path_to_model, path_to_data="data/hollywood2/val/*.avi", key="val"):
     # Generate metrics

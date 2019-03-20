@@ -1,0 +1,14 @@
+{
+  "lr": 0.001,
+  "epochs": 300,
+  "dataset": "hollywood2",
+  "seq_len": 1,
+  "data_dim": 32,
+  "batch_size": 32,
+  "multiplicity": 1,
+  "use_critic": 1,
+  "use_adversary": 1,
+  "use_jpeg": 1,
+  "use_crop": 1,
+  "use_scale": 1
+}
