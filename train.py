@@ -9,6 +9,7 @@ from time import time
 from tqdm import tqdm
 
 import torch
+import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from data import *
@@ -39,15 +40,26 @@ def run(args):
     if args.use_crop: _noise.append(Crop())
     if args.use_scale: _noise.append(Scale())
     if args.use_jpeg: _noise.append(JpegCompression(torch.device("cuda")))
-        
     def noise(x):
         for layer in _noise:
             x = layer(x)
         return x
     
     # Initialize our modules and optimizers
-    encoder = Encoder(data_dim=args.data_dim).cuda()
-    decoder = Decoder(data_dim=args.data_dim).cuda()
+    if args.experiment == "default":
+        encoder = Encoder(kernel_size=(1,7,7), use_position_embedding=False).cuda()
+        decoder = Decoder(kernel_size=(1,7,7), use_position_embedding=False).cuda()
+    elif args.experiment == "positional":
+        encoder = Encoder(kernel_size=(1,7,7), use_position_embedding=True).cuda()
+        decoder = Decoder(kernel_size=(1,7,7), use_position_embedding=True).cuda()
+    elif args.experiment == "small":
+        encoder = Encoder(kernel_size=(1,5,5), use_position_embedding=False).cuda()
+        decoder = Decoder(kernel_size=(1,5,5), use_position_embedding=False).cuda()
+    elif args.experiment == "large":
+        encoder = Encoder(kernel_size=(1,11,11), use_position_embedding=False).cuda()
+        decoder = Decoder(kernel_size=(1,11,11), use_position_embedding=False).cuda()
+    else:
+        raise ValueError(args.experiment)
     critic, adversary = Critic().cuda(), Adversary().cuda()
 
     optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args.lr)
@@ -73,13 +85,12 @@ def run(args):
     for epoch in range(1, args.epochs + 1):
         metrics = {
             "train.loss": [], 
-            "train.raw_acc": [], 
             "train.mjpeg_acc": [], 
             "train.noise_acc": [], 
-            "val.raw_acc": [], 
+            "val.base_acc": [], 
             "val.mjpeg_acc": [], 
             "val.noise_acc": [],
-            "val.quantized_acc": [],
+            "val.cropped_acc": [],
             "val.ssim": [],
             "val.psnr": []
         }
@@ -108,30 +119,26 @@ def run(args):
             # Standard training to maximize accuracy.
             loss = 0.0
             wm_frames = encoder(frames, data)
-            wm_data = decoder(wm_frames)
-            wm_mjpeg_data = decoder(mjpeg(wm_frames))
             wm_noise_data = decoder(noise(wm_frames))
-            loss += F.binary_cross_entropy_with_logits(wm_data, data)
+            wm_mjpeg_data = decoder(mjpeg(wm_frames))
+            loss += F.binary_cross_entropy_with_logits(wm_noise_data, data)
             if args.use_jpeg:
                 loss += F.binary_cross_entropy_with_logits(wm_mjpeg_data, data)
-            loss += F.binary_cross_entropy_with_logits(wm_noise_data, data)
             if args.use_critic:
-                loss += torch.mean(critic(wm_frames))
+                loss += 0.1 * torch.mean(critic(wm_frames))
             if args.use_adversary:
-                loss += F.binary_cross_entropy_with_logits(decoder(adversary(wm_frames)), data)
+                loss += 0.1 * F.binary_cross_entropy_with_logits(decoder(adversary(wm_frames)), data)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
             metrics["train.loss"].append(loss.item())
-            metrics["train.raw_acc"].append((wm_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
-            metrics["train.mjpeg_acc"].append((wm_mjpeg_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
             metrics["train.noise_acc"].append((wm_noise_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
+            metrics["train.mjpeg_acc"].append((wm_mjpeg_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
 
-            iterator.set_description("%s | Loss %.3f | Raw %.3f | MJPEG %.3f | Noise %.3f" % (
+            iterator.set_description("%s | Loss %.3f | MJPEG %.3f | Noise %.3f" % (
                 epoch, 
                 np.mean(metrics["train.loss"]), 
-                np.mean(metrics["train.raw_acc"]),
                 np.mean(metrics["train.mjpeg_acc"]),
                 np.mean(metrics["train.noise_acc"]),
             ))
@@ -145,25 +152,28 @@ def run(args):
                 data = torch.zeros((frames.size(0), args.data_dim)).random_(0, 2).cuda()
 
                 wm_frames = encoder(frames, data)
-                wm_data = decoder(wm_frames)
-                wm_mjpeg_data = decoder(mjpeg(wm_frames))
-                wm_noise_data = decoder(noise(wm_frames))
-                wm_quantized_data = decoder(((wm_frames + 1.0) * 127.5).int().float() / 127.5 - 1.0)
-
-                metrics["val.raw_acc"].append((wm_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
-                metrics["val.mjpeg_acc"].append((wm_mjpeg_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
-                metrics["val.noise_acc"].append((wm_noise_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
-                metrics["val.quantized_acc"].append((wm_quantized_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
-
+                wm_frames = ((wm_frames + 1.0) * 127.5).int().float() / 127.5 - 1.0
                 metrics["val.ssim"].append(ssim(frames[:,:,0,:,:], wm_frames[:,:,0,:,:]).item())
                 metrics["val.psnr"].append(psnr(frames[:,:,0,:,:], wm_frames[:,:,0,:,:]).item())
 
-                iterator.set_description("%s | Raw %.3f | MJPEG %.3f | Noise %.3f | Quantized %.3f | SSIM %.3f | PSNR %.3f" % (
+                wm_data = decoder(wm_frames)
+                wm_mjpeg_data = decoder(mjpeg(wm_frames))
+                wm_noise_data = decoder(noise(wm_frames))
+                dH, dW = random.randint(128, wm_frames.size(3)), random.randint(128, wm_frames.size(4))
+                sH, sW = random.randint(0, wm_frames.size(3)-dH), random.randint(0, wm_frames.size(4)-dW)
+                wm_cropped_data = decoder(wm_frames[:,:,:,sH:sH+dH,sW:sW+dW])
+
+                metrics["val.base_acc"].append((wm_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
+                metrics["val.mjpeg_acc"].append((wm_mjpeg_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
+                metrics["val.noise_acc"].append((wm_noise_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
+                metrics["val.cropped_acc"].append((wm_cropped_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
+
+                iterator.set_description("%s | Base %.3f | MJPEG %.3f | Noise %.3f | Cropped %.3f | SSIM %.3f | PSNR %.3f" % (
                     epoch, 
-                    np.mean(metrics["val.raw_acc"]),
+                    np.mean(metrics["val.base_acc"]),
                     np.mean(metrics["val.mjpeg_acc"]),
                     np.mean(metrics["val.noise_acc"]),
-                    np.mean(metrics["val.quantized_acc"]),
+                    np.mean(metrics["val.cropped_acc"]),
                     np.mean(metrics["val.ssim"]),
                     np.mean(metrics["val.psnr"]),
                 ))
@@ -181,12 +191,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--epochs', type=int, default=300)
+    parser.add_argument('--epochs', type=int, default=128)
     parser.add_argument('--dataset', type=str, default="hollywood2")
+    parser.add_argument('--experiment', type=str, default="default")
 
     parser.add_argument('--seq_len', type=int, default=1)
     parser.add_argument('--data_dim', type=int, default=32)
-    parser.add_argument('--batch_size', type=int, default=32)
+    parser.add_argument('--batch_size', type=int, default=2)
     parser.add_argument('--multiplicity', type=int, default=1)
     
     parser.add_argument('--use_critic', type=int, default=0)

@@ -12,6 +12,7 @@ from tqdm import tqdm
 random.seed(42)
 np.random.seed(42)
 torch.manual_seed(42)
+torch.backends.cudnn.benchmark = True
 
 SEQ_LEN = 3
 SEQ_LEN_MIDDLE = SEQ_LEN//2

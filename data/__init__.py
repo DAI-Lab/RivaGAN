@@ -19,7 +19,7 @@ class VideoDataset(Dataset):
     The output has shape (3, seq_len, crop_size[0], crop_size[1]).
     """
 
-    def __init__(self, root_dir, seq_len=10, crop_size=(128, 128), max_videos=2000):
+    def __init__(self, root_dir, seq_len=10, crop_size=(128, 128), max_videos=10):
         self.seq_len = seq_len
         self.crop_size = crop_size
         
@@ -28,12 +28,16 @@ class VideoDataset(Dataset):
             paths.extend(glob(os.path.join(root_dir, "**/*.%s" % ext), recursive=True))
         if max_videos != -1 and len(paths) > max_videos:
             paths = paths[:max_videos]
+            print("Limiting to first %s videos for debugging." % max_videos)
 
         self.videos = []
         for path in tqdm(paths, root_dir):
             cap = cv2.VideoCapture(path)
             nb_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            self.videos.append((path, nb_frames))
+            ok, frame = cap.read()
+            H, W, D = frame.shape
+            if not crop_size or (H > crop_size[0] and W > crop_size[1]):
+                self.videos.append((path, nb_frames))
 
     def __len__(self):
         return len(self.videos)
@@ -48,15 +52,17 @@ class VideoDataset(Dataset):
         cap.set(cv2.CAP_PROP_POS_FRAMES, start_idx-1)
         ok, frame = cap.read()
         H, W, D = frame.shape
-        dx, dy = self.crop_size
-        x = randint(0, W-dx-1)
-        y = randint(0, H-dy-1)
+        if self.crop_size:
+            dx, dy = self.crop_size
+            x = randint(0, W-dx-1)
+            y = randint(0, H-dy-1)
         
         # Read frames and normalize to [-1.0, 1.0]
         frames = []
         for _ in range(self.seq_len):
             ok, frame = cap.read()
-            frame = frame[y:y+dy,x:x+dx]
+            if self.crop_size:
+                frame = frame[y:y+dy,x:x+dx]
             frames.append(frame / 127.5 - 1.0)
         x = torch.FloatTensor(frames)
         x = x.permute(3, 0, 1, 2)
@@ -65,12 +71,12 @@ class VideoDataset(Dataset):
 def load_train_val(seq_len, batch_size, dataset="hollywood2"):
     train = DataLoader(VideoDataset(
         "data/%s/train" % dataset, 
-        crop_size=(100, 100), 
+        crop_size=(256, 256), 
         seq_len=seq_len,
-    ), shuffle=True, num_workers=32, batch_size=batch_size, pin_memory=True)
+    ), shuffle=True, num_workers=32, batch_size=batch_size)
     val = DataLoader(VideoDataset(
         "data/%s/val" % dataset, 
-        crop_size=(100, 100),
+        crop_size=(300, 300),
         seq_len=seq_len,
-    ), shuffle=False, num_workers=32, batch_size=batch_size, pin_memory=True)
+    ), shuffle=True, num_workers=32, batch_size=batch_size)
     return train, val
