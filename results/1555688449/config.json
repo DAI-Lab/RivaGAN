@@ -1,0 +1,10 @@
+{
+  "lr": 0.001,
+  "epochs": 200,
+  "dataset": "hollywood2",
+  "seq_len": 1,
+  "data_dim": 32,
+  "batch_size": 8,
+  "multiplicity": 1,
+  "combiner": "multiplicative"
+}

@@ -1,9 +1,9 @@
-# -*- coding: utf-8 -*-
-
+import cv2
 import zlib
 import torch
 from math import exp
 from torch.nn.functional import conv2d
+from tempfile import NamedTemporaryFile
 
 def gaussian(window_size, sigma):
     """Gaussian window.
@@ -64,3 +64,32 @@ def ssim(img1, img2, window_size=11, size_average=True):
 def psnr(img1, img2):
     mse = torch.mean( (img1 - img2) ** 2 )
     return 20 * torch.log10(2.0 / torch.sqrt(mse))
+
+def mjpeg(x):
+    """
+    Write each video to disk and re-read it from disk.
+
+    Input: (N, 3, L, H, W)
+    Output: (N, 3, L, H, W)
+    """
+    y = torch.zeros(x.size())
+    _, _, _, height, width = x.size()
+
+    for n in range(x.size(0)):
+        tempfile = NamedTemporaryFile(suffix=".avi")
+
+        vout = cv2.VideoWriter(tempfile.name, cv2.VideoWriter_fourcc(*'MJPG'), 20.0, (width, height))
+        for l in range(x.size(2)):
+            image = x[n,:,l,:,:] # (3, H, W)
+            image = torch.clamp(image.permute(1,2,0), min=-1.0, max=1.0)
+            vout.write(((image + 1.0) * 127.5).detach().cpu().numpy().astype("uint8"))
+        vout.release()
+
+        vin = cv2.VideoCapture(tempfile.name)
+        for l in range(x.size(2)):
+            _, frame = vin.read() # (H, W, 3)
+            frame = torch.tensor(frame / 127.5 - 1.0)
+            y[n,:,l,:,:] = frame.permute(2,0,1)
+        
+        tempfile.close()
+    return y.to(x.device)

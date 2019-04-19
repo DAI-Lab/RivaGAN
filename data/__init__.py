@@ -18,9 +18,10 @@ class VideoDataset(Dataset):
     The output has shape (3, seq_len, crop_size[0], crop_size[1]).
     """
 
-    def __init__(self, root_dir, seq_len=10, crop_size=(128, 128)):
+    def __init__(self, root_dir, crop_size, seq_len, max_crop_size=(360, 480)):
         self.seq_len = seq_len
         self.crop_size = crop_size
+        self.max_crop_size = max_crop_size
         
         self.videos = []
         for ext in ["avi", "mp4"]:
@@ -42,9 +43,17 @@ class VideoDataset(Dataset):
         cap.set(cv2.CAP_PROP_POS_FRAMES, start_idx-1)
         ok, frame = cap.read()
         H, W, D = frame.shape
-        dx, dy = self.crop_size
-        x = randint(0, W-dx-1)
-        y = randint(0, H-dy-1)
+        x, dx, y, dy = 0, W, 0, H
+        if self.crop_size:
+            dy, dx = self.crop_size
+            x = randint(0, W-dx-1)
+            y = randint(0, H-dy-1)
+        if self.max_crop_size[0] < dy:
+            dy, dx = self.max_crop_size
+            y = randint(0, H-dy-1)
+        if self.max_crop_size[1] < dx:
+            dy, dx = self.max_crop_size
+            x = randint(0, W-dx-1)
         
         # Read frames and normalize to [-1.0, 1.0]
         frames = []
@@ -57,14 +66,24 @@ class VideoDataset(Dataset):
         return x
 
 def load_train_val(seq_len, batch_size, dataset="hollywood2"):
+    """
+    This returns two dataloaders correponding to the train and validation sets. Each 
+    iterator yields tensors of shape (N, 3, L, H, W) where N is the batch size, L is 
+    the sequence length, and H and W are the height and width of the frame.
+
+    The batch size is always 1 in the validation set. The frames are always cropped 
+    to (128, 128) windows in the training set. The frames in the validation set are 
+    not cropped if they are smaller than 360x480; otherwise, they are cropped so the
+    maximum returned size is 360x480.
+    """
     train = DataLoader(VideoDataset(
         "data/%s/train" % dataset, 
-        crop_size=(128, 128), 
+        crop_size=(160, 160), 
         seq_len=seq_len,
     ), shuffle=True, num_workers=16, batch_size=batch_size, pin_memory=True)
     val = DataLoader(VideoDataset(
         "data/%s/val" % dataset, 
-        crop_size=(128, 128),
+        crop_size=False,
         seq_len=seq_len,
-    ), shuffle=False, num_workers=16, batch_size=batch_size, pin_memory=True)
+    ), shuffle=False, batch_size=1, pin_memory=True)
     return train, val

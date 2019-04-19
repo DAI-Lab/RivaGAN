@@ -7,16 +7,25 @@ import argparse
 import random
 from time import time
 from tqdm import tqdm
+from itertools import chain
 
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
-from data import *
-from model import *
+from data import load_train_val
+from model import Encoder, Decoder
+from model.utils import ssim, psnr, mjpeg
 
 random.seed(42)
 np.random.seed(42)
 torch.manual_seed(42)
+
+def get_acc(y_true, y_pred):
+    assert y_true.size() == y_pred.size()
+    return (y_pred >= 0.0).eq(y_true >= 0.5).sum().float().item() / y_pred.numel()
+
+def quantize(frames):
+    return ((frames + 1.0) * 127.5).int().float() / 127.5 - 1.0
 
 def make_pair(frames, args):
     # Add multiplicity to stabilize training.
@@ -33,36 +42,15 @@ def run(args):
     # Load our datasets
     train, val = load_train_val(args.seq_len, args.batch_size, args.dataset)
 
-    # Initialize our noise layers
-    _noise = [Quantization()]
-    if args.use_crop: _noise.append(Crop())
-    if args.use_scale: _noise.append(Scale())
-    if args.use_dct: _noise.append(Compression(yuv=args.dct_yuv, max_pct=args.dct_max_pct))
-    if args.use_jpeg: _noise.append(JpegCompression(torch.device("cuda")))
-        
-    def noise(x):
-        for layer in _noise:
-            x = layer(x)
-        return x
-    
     # Initialize our modules and optimizers
-    encoder = Encoder(data_dim=args.data_dim).cuda()
+    encoder = Encoder(data_dim=args.data_dim, combiner=args.combiner).cuda()
     decoder = Decoder(data_dim=args.data_dim).cuda()
-    critic, adversary = Critic().cuda(), Adversary().cuda()
 
-    optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args.lr)
-    optimizer_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer)
-    xoptimizer = optim.Adam(list(critic.parameters()) + list(adversary.parameters()), lr=args.lr)
-    xoptimizer_scheduler = optim.lr_scheduler.ReduceLROnPlateau(xoptimizer)
+    optimizer = optim.Adam(chain(encoder.parameters(), decoder.parameters()), lr=args.lr)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer)
 
     # Set up the log directory
-    log_dir = os.path.join("results/", "m%s%s-n%s%s%s%s-%s" % (
-        args.use_critic,
-        args.use_adversary,
-        args.use_crop,
-        args.use_scale,
-        args.use_dct,
-        args.use_jpeg,
+    log_dir = os.path.join("results/", "%s" % (
         str(int(time()))
     ))
     os.makedirs(log_dir, exist_ok=False)
@@ -76,64 +64,37 @@ def run(args):
             "train.loss": [], 
             "train.raw_acc": [], 
             "train.mjpeg_acc": [], 
-            "train.noise_acc": [], 
-            "val.raw_acc": [], 
-            "val.mjpeg_acc": [], 
-            "val.noise_acc": [],
-            "val.quantized_acc": [],
             "val.ssim": [],
-            "val.psnr": []
+            "val.psnr": [],
+            "val.mjpeg_acc": [], 
         }
 
         # Train
         gc.collect()
         iterator = tqdm(train, ncols=0)
         for frames in iterator:
-            # Pair each sequence of frames with a data vector
             frames, data = make_pair(frames, args)
 
-            # Adversarial training to optimize quality / robustness.
-            if args.use_critic or args.use_adversary:
-                loss = 0.0
-                wm_frames = encoder(frames, data)
-                if args.use_critic:
-                    loss += torch.mean(critic(frames) - critic(wm_frames))
-                if args.use_adversary:
-                    loss -= F.binary_cross_entropy_with_logits(decoder(adversary(wm_frames)), data)
-                xoptimizer.zero_grad()
-                loss.backward()
-                xoptimizer.step()
-                for p in critic.parameters():
-                    p.data.clamp_(-0.01, 0.01)
-
-            # Standard training to maximize accuracy.
-            loss = 0.0
             wm_frames = encoder(frames, data)
-            wm_data = decoder(wm_frames)
+            wm_raw_data = decoder(wm_frames)
             wm_mjpeg_data = decoder(mjpeg(wm_frames))
-            wm_noise_data = decoder(noise(wm_frames))
-            loss += F.binary_cross_entropy_with_logits(wm_data, data)
+
+            loss = 0.0
+            loss += F.binary_cross_entropy_with_logits(wm_raw_data, data)
             loss += F.binary_cross_entropy_with_logits(wm_mjpeg_data, data)
-            loss += F.binary_cross_entropy_with_logits(wm_noise_data, data)
-            if args.use_critic:
-                loss += torch.mean(critic(wm_frames))
-            if args.use_adversary:
-                loss += F.binary_cross_entropy_with_logits(decoder(adversary(wm_frames)), data)
+
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
             metrics["train.loss"].append(loss.item())
-            metrics["train.raw_acc"].append((wm_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
-            metrics["train.mjpeg_acc"].append((wm_mjpeg_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
-            metrics["train.noise_acc"].append((wm_noise_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
-
-            iterator.set_description("%s | Loss %.3f | Raw %.3f | MJPEG %.3f | Noise %.3f" % (
+            metrics["train.raw_acc"].append(get_acc(data, wm_raw_data))
+            metrics["train.mjpeg_acc"].append(get_acc(data, wm_mjpeg_data))
+            iterator.set_description("%s | Loss %.3f | Raw %.3f | MJPEG %.3f" % (
                 epoch, 
                 np.mean(metrics["train.loss"]), 
                 np.mean(metrics["train.raw_acc"]),
                 np.mean(metrics["train.mjpeg_acc"]),
-                np.mean(metrics["train.noise_acc"]),
             ))
 
         # Validate
@@ -145,27 +106,17 @@ def run(args):
                 data = torch.zeros((frames.size(0), args.data_dim)).random_(0, 2).cuda()
 
                 wm_frames = encoder(frames, data)
-                wm_data = decoder(wm_frames)
                 wm_mjpeg_data = decoder(mjpeg(wm_frames))
-                wm_noise_data = decoder(noise(wm_frames))
-                wm_quantized_data = decoder(((wm_frames + 1.0) * 127.5).int().float() / 127.5 - 1.0)
-
-                metrics["val.raw_acc"].append((wm_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
-                metrics["val.mjpeg_acc"].append((wm_mjpeg_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
-                metrics["val.noise_acc"].append((wm_noise_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
-                metrics["val.quantized_acc"].append((wm_quantized_data >= 0.0).eq(data >= 0.5).sum().float().item() / data.numel())
 
                 metrics["val.ssim"].append(ssim(frames[:,:,0,:,:], wm_frames[:,:,0,:,:]).item())
                 metrics["val.psnr"].append(psnr(frames[:,:,0,:,:], wm_frames[:,:,0,:,:]).item())
+                metrics["val.mjpeg_acc"].append(get_acc(data, wm_mjpeg_data))
 
-                iterator.set_description("%s | Raw %.3f | MJPEG %.3f | Noise %.3f | Quantized %.3f | SSIM %.3f | PSNR %.3f" % (
+                iterator.set_description("%s | SSIM %.3f | PSNR %.3f | MJPEG %.3f" % (
                     epoch, 
-                    np.mean(metrics["val.raw_acc"]),
-                    np.mean(metrics["val.mjpeg_acc"]),
-                    np.mean(metrics["val.noise_acc"]),
-                    np.mean(metrics["val.quantized_acc"]),
                     np.mean(metrics["val.ssim"]),
                     np.mean(metrics["val.psnr"]),
+                    np.mean(metrics["val.mjpeg_acc"]),
                 ))
 
         metrics = {k: round(np.mean(v), 3) for k, v in metrics.items()}
@@ -173,9 +124,8 @@ def run(args):
         history.append(metrics)
         pd.DataFrame(history).to_csv(os.path.join(log_dir, "metrics.tsv"), index=False, sep="\t")
         
-        torch.save((encoder, decoder, critic, adversary), os.path.join(log_dir, "model.pt"))
-        xoptimizer_scheduler.step(metrics["train.loss"])
-        optimizer_scheduler.step(metrics["train.loss"])
+        torch.save((encoder, decoder), os.path.join(log_dir, "model.pt"))
+        scheduler.step(metrics["train.loss"])
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -186,18 +136,8 @@ if __name__ == "__main__":
 
     parser.add_argument('--seq_len', type=int, default=1)
     parser.add_argument('--data_dim', type=int, default=32)
-    parser.add_argument('--batch_size', type=int, default=12)
-    parser.add_argument('--multiplicity', type=int, default=2)
-    
-    parser.add_argument('--use_critic', type=int, default=0)
-    parser.add_argument('--use_adversary', type=int, default=0)
-
-    parser.add_argument('--use_crop', type=int, default=0)
-    parser.add_argument('--use_scale', type=int, default=0)
-    parser.add_argument('--use_dct', type=int, default=0)
-    parser.add_argument('--use_jpeg', type=int, default=0)
-
-    parser.add_argument('--dct_yuv', type=int, default=0)
-    parser.add_argument('--dct_max_pct', type=float, default=0.5)
+    parser.add_argument('--batch_size', type=int, default=8)
+    parser.add_argument('--multiplicity', type=int, default=1)
+    parser.add_argument('--combiner', type=str, default="spatial_repeat", help="spatial_repeat | multiplicative")
 
     run(parser.parse_args())
