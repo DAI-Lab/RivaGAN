@@ -1,0 +1,15 @@
+{
+  "lr": 0.0001,
+  "epochs": 128,
+  "dataset": "hollywood2",
+  "experiment": "product-positional",
+  "seq_len": 1,
+  "data_dim": 32,
+  "batch_size": 4,
+  "multiplicity": 1,
+  "use_critic": 0,
+  "use_adversary": 0,
+  "use_jpeg": 0,
+  "use_crop": 0,
+  "use_scale": 0
+}

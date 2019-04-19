@@ -58,6 +58,12 @@ def run(args):
     elif args.experiment == "large":
         encoder = Encoder(kernel_size=(1,11,11), use_position_embedding=False).cuda()
         decoder = Decoder(kernel_size=(1,11,11), use_position_embedding=False).cuda()
+    elif args.experiment == "product":
+        encoder = MultiplicativeEncoder(kernel_size=(1,11,11), use_position_embedding=False).cuda()
+        decoder = MultiplicativeDecoder(kernel_size=(1,11,11), use_position_embedding=False).cuda()
+    elif args.experiment == "product-positional":
+        encoder = MultiplicativeEncoder(kernel_size=(1,11,11), use_position_embedding=True).cuda()
+        decoder = MultiplicativeDecoder(kernel_size=(1,11,11), use_position_embedding=True).cuda()
     else:
         raise ValueError(args.experiment)
     critic, adversary = Critic().cuda(), Adversary().cuda()
@@ -68,7 +74,8 @@ def run(args):
     xoptimizer_scheduler = optim.lr_scheduler.ReduceLROnPlateau(xoptimizer)
 
     # Set up the log directory
-    log_dir = os.path.join("results/", "m%s%s-n%s%s%s-%s" % (
+    log_dir = os.path.join("results/", "%s.m%s%s-n%s%s%s-%s" % (
+        args.experiment,
         args.use_critic,
         args.use_adversary,
         args.use_jpeg,
@@ -190,14 +197,14 @@ def run(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     
-    parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--epochs', type=int, default=128)
     parser.add_argument('--dataset', type=str, default="hollywood2")
     parser.add_argument('--experiment', type=str, default="default")
 
     parser.add_argument('--seq_len', type=int, default=1)
     parser.add_argument('--data_dim', type=int, default=32)
-    parser.add_argument('--batch_size', type=int, default=2)
+    parser.add_argument('--batch_size', type=int, default=4)
     parser.add_argument('--multiplicity', type=int, default=1)
     
     parser.add_argument('--use_critic', type=int, default=0)

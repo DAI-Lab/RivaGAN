@@ -19,16 +19,13 @@ class VideoDataset(Dataset):
     The output has shape (3, seq_len, crop_size[0], crop_size[1]).
     """
 
-    def __init__(self, root_dir, seq_len=10, crop_size=(128, 128), max_videos=10):
+    def __init__(self, root_dir, seq_len=10, crop_size=(128, 128)):
         self.seq_len = seq_len
         self.crop_size = crop_size
         
         paths = []
         for ext in ["avi", "mp4"]:
             paths.extend(glob(os.path.join(root_dir, "**/*.%s" % ext), recursive=True))
-        if max_videos != -1 and len(paths) > max_videos:
-            paths = paths[:max_videos]
-            print("Limiting to first %s videos for debugging." % max_videos)
 
         self.videos = []
         for path in tqdm(paths, root_dir):
