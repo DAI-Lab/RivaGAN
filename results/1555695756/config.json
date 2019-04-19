@@ -4,7 +4,8 @@
   "dataset": "hollywood2",
   "seq_len": 1,
   "data_dim": 32,
-  "batch_size": 8,
+  "batch_size": 12,
   "multiplicity": 1,
-  "combiner": "multiplicative"
+  "attention": 0,
+  "combiner": "spatial_repeat"
 }

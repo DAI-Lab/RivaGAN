@@ -15,6 +15,7 @@ import torch.nn.functional as F
 from data import load_train_val
 from model import Encoder, Decoder
 from model.utils import ssim, psnr, mjpeg
+from model.attention import AttentiveEncoder, AttentiveDecoder
 
 random.seed(42)
 np.random.seed(42)
@@ -45,6 +46,9 @@ def run(args):
     # Initialize our modules and optimizers
     encoder = Encoder(data_dim=args.data_dim, combiner=args.combiner).cuda()
     decoder = Decoder(data_dim=args.data_dim).cuda()
+    if args.attention:
+        encoder = AttentiveEncoder(data_dim=args.data_dim).cuda()
+        decoder = AttentiveDecoder(encoder).cuda()
 
     optimizer = optim.Adam(chain(encoder.parameters(), decoder.parameters()), lr=args.lr)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer)
@@ -136,8 +140,9 @@ if __name__ == "__main__":
 
     parser.add_argument('--seq_len', type=int, default=1)
     parser.add_argument('--data_dim', type=int, default=32)
-    parser.add_argument('--batch_size', type=int, default=8)
+    parser.add_argument('--batch_size', type=int, default=12)
     parser.add_argument('--multiplicity', type=int, default=1)
+    parser.add_argument('--attention', type=int, default=0)
     parser.add_argument('--combiner', type=str, default="spatial_repeat", help="spatial_repeat | multiplicative")
 
     run(parser.parse_args())
