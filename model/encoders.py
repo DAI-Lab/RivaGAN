@@ -58,24 +58,24 @@ class Encoder(nn.Module):
         self._conv1 = nn.Sequential(
             nn.Conv3d(3, 32, kernel_size=kernel_size, padding=padding, stride=1),
             nn.Tanh(),
-            nn.InstanceNorm3d(32),
+            nn.BatchNorm3d(32),
         )
         if self.combiner == spatial_repeat:
             self._conv2 = nn.Sequential(
                 nn.Conv3d(32+data_dim, 64, kernel_size=kernel_size, padding=padding, stride=1),
                 nn.Tanh(),
-                nn.InstanceNorm3d(64),
+                nn.BatchNorm3d(64),
             )
         else:
             self._conv2 = nn.Sequential(
                 nn.Conv3d(32, 64, kernel_size=kernel_size, padding=padding, stride=1),
                 nn.Tanh(),
-                nn.InstanceNorm3d(64),
+                nn.BatchNorm3d(64),
             )
         self._conv3 = nn.Sequential(
             nn.ConvTranspose3d(64, 128, kernel_size=kernel_size, padding=padding, stride=1),
             nn.Tanh(),
-            nn.InstanceNorm3d(128),
+            nn.BatchNorm3d(128),
             nn.Conv3d(128, 3, kernel_size=kernel_size, padding=padding, stride=1),
             nn.Tanh(),
         )

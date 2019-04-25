@@ -75,6 +75,8 @@ def run(args):
 
         # Train
         gc.collect()
+        encoder.train()
+        decoder.train()
         iterator = tqdm(train, ncols=0)
         for frames in iterator:
             frames, data = make_pair(frames, args)
@@ -103,6 +105,8 @@ def run(args):
 
         # Validate
         gc.collect()
+        encoder.eval()
+        decoder.eval()
         iterator = tqdm(val, ncols=0)
         with torch.no_grad():
             for frames in iterator:
@@ -134,7 +138,7 @@ def run(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     
-    parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--epochs', type=int, default=200)
     parser.add_argument('--dataset', type=str, default="hollywood2")
 

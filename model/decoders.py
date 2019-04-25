@@ -14,13 +14,13 @@ class Decoder(nn.Module):
         self._conv = nn.Sequential(
             nn.Conv3d(3, 32, kernel_size=kernel_size),
             nn.ELU(),
-            nn.InstanceNorm3d(32),
+            nn.BatchNorm3d(32),
             nn.Conv3d(32, 64, kernel_size=kernel_size),
             nn.ELU(),
-            nn.InstanceNorm3d(64),
+            nn.BatchNorm3d(64),
             nn.Conv3d(64, 128, kernel_size=kernel_size),
             nn.ELU(),
-            nn.InstanceNorm3d(128),
+            nn.BatchNorm3d(128),
         )
         self._pool = nn.MaxPool3d(kernel_size=kernel_size)
         self._1x1 = nn.Conv3d(256, self.data_dim, kernel_size=(1,1,1))
