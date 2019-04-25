@@ -1,2 +1,2 @@
 from model.decoders import Decoder
-from model.encoders import Encoder
+from model.encoders import Encoder, StridedEncoder

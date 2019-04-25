@@ -38,14 +38,15 @@ class AttentiveEncoder(nn.Module):
         self._attention = nn.Sequential(
             nn.Conv3d(3, 32, kernel_size=kernel_size, padding=padding, stride=1),
             nn.Tanh(),
-            nn.InstanceNorm3d(32),
+            nn.BatchNorm3d(32),
             nn.Conv3d(32, data_dim, kernel_size=kernel_size, padding=padding, stride=1),
             nn.Tanh(),
-            nn.InstanceNorm3d(data_dim),
+            nn.BatchNorm3d(data_dim),
         )
         self._conv = nn.Sequential(
             nn.Conv3d(4, 32, kernel_size=kernel_size, padding=padding, stride=1),
             nn.Tanh(),
+            nn.BatchNorm3d(32),
             nn.Conv3d(32, 3, kernel_size=kernel_size, padding=padding, stride=1),
             nn.Tanh(),
         )
@@ -71,6 +72,7 @@ class AttentiveDecoder(nn.Module):
         self._conv = nn.Sequential(
             nn.Conv3d(3, 32, kernel_size=encoder.kernel_size, padding=encoder.padding, stride=1),
             nn.Tanh(),
+            nn.BatchNorm3d(32),
             nn.Conv3d(32, self.data_dim, kernel_size=encoder.kernel_size, padding=encoder.padding, stride=1),
         )
 

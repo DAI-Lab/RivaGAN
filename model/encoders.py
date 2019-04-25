@@ -86,3 +86,51 @@ class Encoder(nn.Module):
         x = self._conv2(self.combiner(x, data))
         x = self._conv3(x)
         return frames + self.linf_max * x
+
+class StridedEncoder(nn.Module):
+    """
+    Input: (N, 3, L, H, W), (N, D,)
+    Output: (N, 3, L, H, W)
+    """
+
+    def __init__(self, data_dim, linf_max=0.016, combiner="spatial_repeat", kernel_size=(1,11,11), padding=(0,5,5)):
+        super(StridedEncoder, self).__init__()
+        
+        self.linf_max = linf_max
+        self.data_dim = data_dim
+        self.combiner = {
+            "spatial_repeat": spatial_repeat,
+            "multiplicative": multiplicative
+        }[combiner]
+
+        self._conv1 = nn.Sequential(
+            nn.Conv3d(3, 32, kernel_size=kernel_size, padding=padding, stride=1),
+            nn.Tanh(),
+            nn.BatchNorm3d(32),
+            nn.Conv3d(32, 64, kernel_size=kernel_size, padding=padding, stride=(1,2,2)),
+            nn.Tanh(),
+            nn.BatchNorm3d(64),
+        )
+        if self.combiner == spatial_repeat:
+            self._conv2 = nn.Sequential(
+                nn.ConvTranspose3d(64+data_dim, 128, kernel_size=kernel_size, padding=padding, stride=(1,2,2), output_padding=(0,1,1)),
+                nn.Tanh(),
+                nn.BatchNorm3d(128),
+            )
+        else:
+            self._conv2 = nn.Sequential(
+                nn.ConvTranspose3d(64, 128, kernel_size=kernel_size, padding=padding, stride=(1,2,2), output_padding=(0,1,1)),
+                nn.Tanh(),
+                nn.BatchNorm3d(128),
+            )
+        self._conv3 = nn.Sequential(
+            nn.Conv3d(128, 3, kernel_size=kernel_size, padding=padding, stride=1),
+            nn.Tanh(),
+        )
+
+    def forward(self, frames, data):
+        data = data * 2.0 - 1.0
+        x = self._conv1(frames)
+        x = self._conv2(self.combiner(x, data))
+        x = self._conv3(x)
+        return frames + self.linf_max * x
