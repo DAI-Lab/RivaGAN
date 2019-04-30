@@ -50,11 +50,11 @@ def run(args):
     compress = Compression()
     def noise(frames):
         if args.use_noise:
-            if random() < 0.5:
+            if random.random() < 0.5:
                 frames = crop(frames)
-            if random() < 0.5:
+            if random.random() < 0.5:
                 frames = scale(frames)
-            if random() < 0.5:
+            if random.random() < 0.5:
                 frames = compress(frames)
         return frames
 
@@ -87,6 +87,8 @@ def run(args):
             "train.mjpeg_acc": [], 
             "val.ssim": [],
             "val.psnr": [],
+            "val.crop_acc": [], 
+            "val.scale_acc": [], 
             "val.mjpeg_acc": [], 
         }
 
@@ -131,16 +133,22 @@ def run(args):
                 data = torch.zeros((frames.size(0), args.data_dim)).random_(0, 2).cuda()
 
                 wm_frames = encoder(frames, data)
+                wm_crop_data = decoder(mjpeg(crop(wm_frames)))
+                wm_scale_data = decoder(mjpeg(scale(wm_frames)))
                 wm_mjpeg_data = decoder(mjpeg(wm_frames))
 
                 metrics["val.ssim"].append(ssim(frames[:,:,0,:,:], wm_frames[:,:,0,:,:]).item())
                 metrics["val.psnr"].append(psnr(frames[:,:,0,:,:], wm_frames[:,:,0,:,:]).item())
+                metrics["val.crop_acc"].append(get_acc(data, wm_crop_data))
+                metrics["val.scale_acc"].append(get_acc(data, wm_scale_data))
                 metrics["val.mjpeg_acc"].append(get_acc(data, wm_mjpeg_data))
 
-                iterator.set_description("%s | SSIM %.3f | PSNR %.3f | MJPEG %.3f" % (
+                iterator.set_description("%s | SSIM %.3f | PSNR %.3f | Crop %.3f | Scale %.3f | MJPEG %.3f" % (
                     epoch, 
                     np.mean(metrics["val.ssim"]),
                     np.mean(metrics["val.psnr"]),
+                    np.mean(metrics["val.crop_acc"]),
+                    np.mean(metrics["val.scale_acc"]),
                     np.mean(metrics["val.mjpeg_acc"]),
                 ))
 
@@ -148,6 +156,8 @@ def run(args):
         metrics["epoch"] = epoch
         history.append(metrics)
         pd.DataFrame(history).to_csv(os.path.join(log_dir, "metrics.tsv"), index=False, sep="\t")
+        with open(os.path.join(log_dir, "metrics.json"), "wt") as fout:
+            fout.write(json.dumps(metrics, indent=2, default=lambda o: str(o)))
         
         torch.save((encoder, decoder), os.path.join(log_dir, "model.pt"))
         scheduler.step(metrics["train.loss"])
