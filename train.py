@@ -15,8 +15,8 @@ import torch.nn.functional as F
 from data import load_train_val
 from model.utils import ssim, psnr, mjpeg
 from model.noise import Crop, Scale, Compression
-from model import Encoder, Decoder, StridedEncoder
-from model.attention import AttentiveEncoder, AttentiveDecoder
+from model import Adversary, Critic
+from model import AttentiveEncoder, AttentiveDecoder
 
 random.seed(42)
 np.random.seed(42)
@@ -27,14 +27,15 @@ def get_acc(y_true, y_pred):
     return (y_pred >= 0.0).eq(y_true >= 0.5).sum().float().item() / y_pred.numel()
 
 def quantize(frames):
+    # [-1.0, 1.0] -> {0, 255} -> [-1.0, 1.0]
     return ((frames + 1.0) * 127.5).int().float() / 127.5 - 1.0
 
 def make_pair(frames, args):
-    # Add multiplicity to stabilize training.
+    # Add multiplicity to further stabilize training.
     frames = torch.cat([frames] * args.multiplicity, dim=0).cuda()
     data = torch.zeros((frames.size(0), args.data_dim)).random_(0, 2).cuda()
 
-    # Add the bit-inverse to further stabilize training.
+    # Add the bit-inverse to stabilize training.
     frames = torch.cat([frames, frames], dim=0).cuda()
     data = torch.cat([data, 1.0 - data], dim=0).cuda()
 
@@ -59,16 +60,13 @@ def run(args):
         return frames
 
     # Initialize our modules and optimizers
-    encoder = Encoder(data_dim=args.data_dim, combiner=args.combiner).cuda()
-    decoder = Decoder(data_dim=args.data_dim).cuda()
-    if args.experiment == "attention":
-        encoder = AttentiveEncoder(data_dim=args.data_dim).cuda()
-        decoder = AttentiveDecoder(encoder).cuda()
-    if args.experiment == "stride":
-        encoder = StridedEncoder(data_dim=args.data_dim, combiner=args.combiner).cuda()
+    encoder = AttentiveEncoder(data_dim=args.data_dim, tie_rgb=args.tie_rgb).cuda()
+    decoder = AttentiveDecoder(encoder).cuda()
+    adversary, critic = Adversary().cuda(), Critic().cuda()
 
     optimizer = optim.Adam(chain(encoder.parameters(), decoder.parameters()), lr=args.lr)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer)
+    adv_optimizer = optim.Adam(chain(adversary.parameters(), critic.parameters()), lr=args.lr)
 
     # Set up the log directory
     log_dir = os.path.join("results/", "%s" % (
@@ -85,6 +83,7 @@ def run(args):
             "train.loss": [], 
             "train.raw_acc": [], 
             "train.mjpeg_acc": [], 
+            "train.adv_loss": [],
             "val.ssim": [],
             "val.psnr": [],
             "val.crop_acc": [], 
@@ -104,13 +103,35 @@ def run(args):
             wm_raw_data = decoder(noise(wm_frames))
             wm_mjpeg_data = decoder(mjpeg(wm_frames))
 
+            # Optimize encoder-decoder
             loss = 0.0
             loss += F.binary_cross_entropy_with_logits(wm_raw_data, data)
             loss += F.binary_cross_entropy_with_logits(wm_mjpeg_data, data)
-
+            if args.use_critic:
+                critic_loss = torch.mean(critic(wm_frames))
+                print("critic loss", critic_loss.item())
+                loss += 0.1 * critic_loss
+            if args.use_adversary:
+                adversary_loss = F.binary_cross_entropy_with_logits(decoder(adversary(wm_frames)), data)
+                print("adversary loss", adversary_loss.item())
+                loss += 0.1 * adversary_loss
             optimizer.zero_grad()
-            loss.backward()
+            loss.backward(retain_graph=args.use_critic or args.use_adversary)
             optimizer.step()
+
+            # Optimize critic-adversary
+            if args.use_critic or args.use_adversary:
+                adv_loss = 0.0
+                if args.use_critic:
+                    adv_loss += torch.mean(critic(frames) - critic(wm_frames))
+                if args.use_adversary:
+                    adv_loss -= F.binary_cross_entropy_with_logits(decoder(adversary(wm_frames)), data)
+                adv_optimizer.zero_grad()
+                adv_loss.backward()
+                adv_optimizer.step()
+                for p in critic.parameters():
+                    p.data.clamp_(-0.1, 0.1)
+                metrics["train.adv_loss"].append(adv_loss.item())
 
             metrics["train.loss"].append(loss.item())
             metrics["train.raw_acc"].append(get_acc(data, wm_raw_data))
@@ -152,29 +173,30 @@ def run(args):
                     np.mean(metrics["val.mjpeg_acc"]),
                 ))
 
-        metrics = {k: round(np.mean(v), 3) for k, v in metrics.items()}
+        metrics = {k: round(np.mean(v), 3) if len(v) > 0 else "NaN" for k, v in metrics.items()}
         metrics["epoch"] = epoch
         history.append(metrics)
         pd.DataFrame(history).to_csv(os.path.join(log_dir, "metrics.tsv"), index=False, sep="\t")
         with open(os.path.join(log_dir, "metrics.json"), "wt") as fout:
             fout.write(json.dumps(metrics, indent=2, default=lambda o: str(o)))
         
-        torch.save((encoder, decoder), os.path.join(log_dir, "model.pt"))
+        torch.save((encoder, decoder, critic, adversary), os.path.join(log_dir, "model.pt"))
         scheduler.step(metrics["train.loss"])
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     
     parser.add_argument('--lr', type=float, default=1e-4)
-    parser.add_argument('--epochs', type=int, default=200)
+    parser.add_argument('--epochs', type=int, default=300)
     parser.add_argument('--dataset', type=str, default="hollywood2")
-
     parser.add_argument('--seq_len', type=int, default=1)
     parser.add_argument('--data_dim', type=int, default=32)
+
+    parser.add_argument('--tie_rgb', type=int, default=0)
     parser.add_argument('--use_noise', type=int, default=1)
+    parser.add_argument('--use_critic', type=int, default=0)
+    parser.add_argument('--use_adversary', type=int, default=0)
     parser.add_argument('--batch_size', type=int, default=12)
     parser.add_argument('--multiplicity', type=int, default=1)
-    parser.add_argument('--experiment', type=str, default="default")
-    parser.add_argument('--combiner', type=str, default="spatial_repeat", help="spatial_repeat | multiplicative")
 
     run(parser.parse_args())

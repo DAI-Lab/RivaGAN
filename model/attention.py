@@ -27,13 +27,14 @@ class AttentiveEncoder(nn.Module):
     Output: (N, 3, L, H, W)
     """
 
-    def __init__(self, data_dim, linf_max=0.016, kernel_size=(1,11,11), padding=(0,5,5)):
+    def __init__(self, data_dim, tie_rgb=False, linf_max=0.016, kernel_size=(1,11,11), padding=(0,5,5)):
         super(AttentiveEncoder, self).__init__()
         
         self.linf_max = linf_max
         self.data_dim = data_dim
         self.kernel_size = kernel_size
         self.padding = padding
+        self.tie_rgb = tie_rgb
 
         self._attention = nn.Sequential(
             nn.Conv3d(3, 32, kernel_size=kernel_size, padding=padding, stride=1),
@@ -47,7 +48,7 @@ class AttentiveEncoder(nn.Module):
             nn.Conv3d(4, 32, kernel_size=kernel_size, padding=padding, stride=1),
             nn.Tanh(),
             nn.BatchNorm3d(32),
-            nn.Conv3d(32, 3, kernel_size=kernel_size, padding=padding, stride=1),
+            nn.Conv3d(32, 1 if self.tie_rgb else 3, kernel_size=kernel_size, padding=padding, stride=1),
             nn.Tanh(),
         )
 

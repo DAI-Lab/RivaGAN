@@ -25,7 +25,8 @@ class VideoDataset(Dataset):
         
         self.videos = []
         for ext in ["avi", "mp4"]:
-            for path in glob(os.path.join(root_dir, "**/*.%s" % ext), recursive=True):
+            __dir__ = os.path.dirname(__file__)
+            for path in glob(os.path.join(__dir__, root_dir, "**/*.%s" % ext), recursive=True):
                 cap = cv2.VideoCapture(path)
                 nb_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
                 self.videos.append((path, nb_frames))
@@ -77,12 +78,12 @@ def load_train_val(seq_len, batch_size, dataset="hollywood2"):
     maximum returned size is 360x480.
     """
     train = DataLoader(VideoDataset(
-        "data/%s/train" % dataset, 
+        "%s/train" % dataset, 
         crop_size=(160, 160), 
         seq_len=seq_len,
     ), shuffle=True, num_workers=16, batch_size=batch_size, pin_memory=True)
     val = DataLoader(VideoDataset(
-        "data/%s/val" % dataset, 
+        "%s/val" % dataset, 
         crop_size=False,
         seq_len=seq_len,
     ), shuffle=False, batch_size=1, pin_memory=True)

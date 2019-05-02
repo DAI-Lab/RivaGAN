@@ -1,0 +1,12 @@
+{
+  "train.loss": 0.14,
+  "train.raw_acc": 0.973,
+  "train.mjpeg_acc": 0.981,
+  "train.adv_loss": "NaN",
+  "val.ssim": 0.96,
+  "val.psnr": 42.614,
+  "val.crop_acc": 0.995,
+  "val.scale_acc": 0.987,
+  "val.mjpeg_acc": 0.997,
+  "epoch": 200
+}
