@@ -9,16 +9,18 @@ class Critic(nn.Module):
     Output: (N, 1)
     """
 
-    def __init__(self, kernel_size=(1,11,11), padding=(0,5,5)):
+    def __init__(self, kernel_size=(1,3,3), padding=(0,0,0)):
         super(Critic, self).__init__()
         self._conv = nn.Sequential(
-            nn.Conv3d(3, 16, kernel_size=kernel_size, padding=padding),
-            nn.Tanh(),
+            nn.Conv3d(3, 16, kernel_size=kernel_size, padding=padding, stride=2),
+            nn.ReLU(),
             nn.BatchNorm3d(16),
-            nn.Conv3d(16, 32, kernel_size=kernel_size, padding=padding),
-            nn.Tanh(),
+            nn.Conv3d(16, 32, kernel_size=kernel_size, padding=padding, stride=2),
+            nn.ReLU(),
+            nn.BatchNorm3d(32),
+            nn.Conv3d(32, 64, kernel_size=kernel_size, padding=padding, stride=2),
         )
-        self._linear = nn.Linear(32, 1)
+        self._linear = nn.Linear(64, 1)
 
     def forward(self, frames):
         frames = self._conv(frames)

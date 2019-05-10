@@ -16,6 +16,7 @@ from data import load_train_val
 from model.utils import ssim, psnr, mjpeg
 from model.noise import Crop, Scale, Compression
 from model import Adversary, Critic
+from model import Encoder, Decoder
 from model import AttentiveEncoder, AttentiveDecoder
 
 random.seed(42)
@@ -36,8 +37,9 @@ def make_pair(frames, args):
     data = torch.zeros((frames.size(0), args.data_dim)).random_(0, 2).cuda()
 
     # Add the bit-inverse to stabilize training.
-    frames = torch.cat([frames, frames], dim=0).cuda()
-    data = torch.cat([data, 1.0 - data], dim=0).cuda()
+    if args.use_bit_inverse:
+        frames = torch.cat([frames, frames], dim=0).cuda()
+        data = torch.cat([data, 1.0 - data], dim=0).cuda()
 
     return frames, data
 
@@ -62,6 +64,9 @@ def run(args):
     # Initialize our modules and optimizers
     encoder = AttentiveEncoder(data_dim=args.data_dim, tie_rgb=args.tie_rgb).cuda()
     decoder = AttentiveDecoder(encoder).cuda()
+    if args.use_classic:
+        encoder = Encoder(data_dim=args.data_dim).cuda()
+        decoder = Decoder(data_dim=args.data_dim).cuda()
     adversary, critic = Adversary().cuda(), Critic().cuda()
 
     optimizer = optim.Adam(chain(encoder.parameters(), decoder.parameters()), lr=args.lr)
@@ -95,32 +100,13 @@ def run(args):
         gc.collect()
         encoder.train()
         decoder.train()
-        iterator = tqdm(train, ncols=0)
-        for frames in iterator:
-            frames, data = make_pair(frames, args)
 
-            wm_frames = encoder(frames, data)
-            wm_raw_data = decoder(noise(wm_frames))
-            wm_mjpeg_data = decoder(mjpeg(wm_frames))
-
-            # Optimize encoder-decoder
-            loss = 0.0
-            loss += F.binary_cross_entropy_with_logits(wm_raw_data, data)
-            loss += F.binary_cross_entropy_with_logits(wm_mjpeg_data, data)
-            if args.use_critic:
-                critic_loss = torch.mean(critic(wm_frames))
-                print("critic loss", critic_loss.item())
-                loss += 0.1 * critic_loss
-            if args.use_adversary:
-                adversary_loss = F.binary_cross_entropy_with_logits(decoder(adversary(wm_frames)), data)
-                print("adversary loss", adversary_loss.item())
-                loss += 0.1 * adversary_loss
-            optimizer.zero_grad()
-            loss.backward(retain_graph=args.use_critic or args.use_adversary)
-            optimizer.step()
-
-            # Optimize critic-adversary
-            if args.use_critic or args.use_adversary:
+        # Optimize critic-adversary
+        if args.use_critic or args.use_adversary:
+            iterator = tqdm(train, ncols=0)
+            for frames in iterator:
+                frames, data = make_pair(frames, args)
+                wm_frames = encoder(frames, data)
                 adv_loss = 0.0
                 if args.use_critic:
                     adv_loss += torch.mean(critic(frames) - critic(wm_frames))
@@ -132,6 +118,29 @@ def run(args):
                 for p in critic.parameters():
                     p.data.clamp_(-0.1, 0.1)
                 metrics["train.adv_loss"].append(adv_loss.item())
+                iterator.set_description("Adversary | %s" % np.mean(metrics["train.adv_loss"]))
+
+        # Optimize encoder-decoder
+        iterator = tqdm(train, ncols=0)
+        for frames in iterator:
+            frames, data = make_pair(frames, args)
+
+            wm_frames = encoder(frames, data)
+            wm_raw_data = decoder(noise(wm_frames))
+            wm_mjpeg_data = decoder(mjpeg(wm_frames))
+
+            loss = 0.0
+            loss += F.binary_cross_entropy_with_logits(wm_raw_data, data)
+            loss += F.binary_cross_entropy_with_logits(wm_mjpeg_data, data)
+            if args.use_critic:
+                critic_loss = torch.mean(critic(wm_frames))
+                loss += 0.1 * critic_loss
+            if args.use_adversary:
+                adversary_loss = F.binary_cross_entropy_with_logits(decoder(adversary(wm_frames)), data)
+                loss += 0.1 * adversary_loss
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
             metrics["train.loss"].append(loss.item())
             metrics["train.raw_acc"].append(get_acc(data, wm_raw_data))
@@ -185,8 +194,10 @@ def run(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+
+    parser.add_argument('--use_classic', type=int, default=0)
     
-    parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--lr', type=float, default=5e-4)
     parser.add_argument('--epochs', type=int, default=300)
     parser.add_argument('--dataset', type=str, default="hollywood2")
     parser.add_argument('--seq_len', type=int, default=1)
@@ -196,6 +207,7 @@ if __name__ == "__main__":
     parser.add_argument('--use_noise', type=int, default=1)
     parser.add_argument('--use_critic', type=int, default=0)
     parser.add_argument('--use_adversary', type=int, default=0)
+    parser.add_argument('--use_bit_inverse', type=int, default=1)
     parser.add_argument('--batch_size', type=int, default=12)
     parser.add_argument('--multiplicity', type=int, default=1)
 

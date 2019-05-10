@@ -10,7 +10,7 @@ class Adversary(nn.Module):
     Output: (N, 3, L, H, W)
     """
 
-    def __init__(self, l1_max=0.05, kernel_size=(1,11,11), padding=(0,5,5)):
+    def __init__(self, l1_max=0.05, kernel_size=(1,3,3), padding=(0,1,1)):
         super(Adversary, self).__init__()
         self.l1_max = l1_max
         self._conv = nn.Sequential(

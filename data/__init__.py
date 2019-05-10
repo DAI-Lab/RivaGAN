@@ -86,5 +86,6 @@ def load_train_val(seq_len, batch_size, dataset="hollywood2"):
         "%s/val" % dataset, 
         crop_size=False,
         seq_len=seq_len,
+        #max_crop_size=(float("inf"), float("inf"))
     ), shuffle=False, batch_size=1, pin_memory=True)
     return train, val

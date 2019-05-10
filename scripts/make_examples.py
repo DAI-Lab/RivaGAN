@@ -23,7 +23,8 @@ def get_acc(y_true, y_pred):
 
 def tensor_to_image(x):
     x = torch.clamp(x[0,:,0,:,:].permute(1,2,0), min=-1.0, max=1.0)
-    return ((x + 1.0) * 127.5).cpu().int().numpy()
+    x = ((x + 1.0) * 127.5).cpu().int().numpy()
+    return x[:,:,::-1] # BGR -> RGB
 
 def make_examples(path_to_model):
     encoder, decoder, _, _ = torch.load(path_to_model)
@@ -32,6 +33,7 @@ def make_examples(path_to_model):
     decoder.eval()
     with torch.no_grad():
         for frames in val:
+            source = frames.clone()
             frames = frames.cuda()
 
             data = torch.zeros((frames.size(0), encoder.data_dim)).random_(0, 2).cuda()
@@ -42,7 +44,7 @@ def make_examples(path_to_model):
             wm_frames_2 = encoder(frames, data)
             print(get_acc(data, decoder(wm_frames_2)))
 
-            imageio.imwrite(path_to_model.replace("model.pt", "image_in.png"), tensor_to_image(frames))
+            imageio.imwrite(path_to_model.replace("model.pt", "image_in.png"), tensor_to_image(source))
             imageio.imwrite(path_to_model.replace("model.pt", "image_out.png"), tensor_to_image(wm_frames_1))
             imageio.imwrite(path_to_model.replace("model.pt", "image_out_alt.png"), tensor_to_image(wm_frames_2))
 
