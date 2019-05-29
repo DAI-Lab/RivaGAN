@@ -12,6 +12,9 @@ with open('HISTORY.md') as history_file:
     history = history_file.read()
 
 requirements = [
+    'opencv-python==4.1.0.25',
+    'torch==1.0.1.post2',
+    'torch-dct==0.1.5',
 ]
 
 setup_requirements = [
