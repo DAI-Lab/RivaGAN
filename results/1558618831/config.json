@@ -1,0 +1,16 @@
+{
+  "use_classic": 1,
+  "lr": 0.0005,
+  "linf_max": 0.016,
+  "epochs": 300,
+  "dataset": "hollywood2",
+  "seq_len": 1,
+  "data_dim": 32,
+  "tie_rgb": 0,
+  "use_noise": 1,
+  "use_critic": 0,
+  "use_adversary": 0,
+  "use_bit_inverse": 1,
+  "batch_size": 12,
+  "multiplicity": 1
+}

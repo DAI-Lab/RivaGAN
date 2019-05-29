@@ -12,21 +12,33 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
         self.data_dim = data_dim
         self._conv = nn.Sequential(
-            nn.Conv3d(3, 32, kernel_size=kernel_size),
-            nn.ELU(),
-            nn.BatchNorm3d(32),
-            nn.Conv3d(32, 64, kernel_size=kernel_size),
-            nn.ELU(),
+            nn.Conv3d(3, 64, kernel_size=kernel_size),
             nn.BatchNorm3d(64),
-            nn.Conv3d(64, 128, kernel_size=kernel_size),
-            nn.ELU(),
-            nn.BatchNorm3d(128),
+            nn.ReLU(inplace=True),
+            nn.Conv3d(64, 64, kernel_size=kernel_size),
+            nn.BatchNorm3d(64),
+            nn.ReLU(inplace=True),
+            nn.Conv3d(64, 64, kernel_size=kernel_size),
+            nn.BatchNorm3d(64),
+            nn.ReLU(inplace=True),
+            nn.Conv3d(64, 64, kernel_size=kernel_size),
+            nn.BatchNorm3d(64),
+            nn.ReLU(inplace=True),
+            nn.Conv3d(64, 64, kernel_size=kernel_size),
+            nn.BatchNorm3d(64),
+            nn.ReLU(inplace=True),
+            nn.Conv3d(64, 64, kernel_size=kernel_size),
+            nn.BatchNorm3d(64),
+            nn.ReLU(inplace=True),
+            nn.Conv3d(64, 64, kernel_size=kernel_size),
+            nn.BatchNorm3d(64),
+            nn.ReLU(inplace=True),
+            nn.Conv3d(64, self.data_dim, kernel_size=kernel_size),
         )
-        self._pool = nn.MaxPool3d(kernel_size=kernel_size)
-        self._1x1 = nn.Conv3d(256, self.data_dim, kernel_size=(1,1,1))
+        self._linear = nn.Linear(self.data_dim, self.data_dim)
 
     def forward(self, frames):
         frames = self._conv(frames)
-        frames = torch.cat([self._pool(frames), -self._pool(-frames)], dim=1)
-        frames = self._1x1(frames)
-        return torch.mean(frames.view(frames.size(0), self.data_dim, -1), dim=2)
+        N, C, L, H, W = frames.size()
+        data = torch.mean(frames.view(N, self.data_dim, -1), dim=2)
+        return self._linear(data)

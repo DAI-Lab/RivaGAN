@@ -66,5 +66,5 @@ def make_examples(path_to_model):
             np.savez("examples.npz", source=tensor_to_image(frames), wm_1=tensor_to_image(wm_frames_1), wm_2=tensor_to_image(wm_frames_2))
             break
 
-for path_to_model in glob("../results/*/*.pt"):
+for path_to_model in glob("../results/1558293718/*.pt"):
     make_examples(path_to_model)

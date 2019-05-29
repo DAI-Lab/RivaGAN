@@ -45,7 +45,7 @@ class Encoder(nn.Module):
     Output: (N, 3, L, H, W)
     """
 
-    def __init__(self, data_dim, linf_max=0.016, combiner="spatial_repeat", kernel_size=(1,11,11), padding=(0,5,5)):
+    def __init__(self, data_dim, linf_max=0.016, combiner="spatial_repeat", kernel_size=(1,3,3), padding=(0,1,1)):
         super(Encoder, self).__init__()
         
         self.linf_max = linf_max
@@ -56,27 +56,33 @@ class Encoder(nn.Module):
         }[combiner]
 
         self._conv1 = nn.Sequential(
-            nn.Conv3d(3, 32, kernel_size=kernel_size, padding=padding, stride=1),
-            nn.Tanh(),
-            nn.BatchNorm3d(32),
+            nn.Conv3d(3, 64, kernel_size=kernel_size, padding=padding, stride=1),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm3d(64),
+            nn.Conv3d(64, 64, kernel_size=kernel_size, padding=padding, stride=1),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm3d(64),
+            nn.Conv3d(64, 64, kernel_size=kernel_size, padding=padding, stride=1),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm3d(64),
+            nn.Conv3d(64, 64, kernel_size=kernel_size, padding=padding, stride=1),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm3d(64),
         )
         if self.combiner == spatial_repeat:
             self._conv2 = nn.Sequential(
-                nn.Conv3d(32+data_dim, 64, kernel_size=kernel_size, padding=padding, stride=1),
-                nn.Tanh(),
+                nn.Conv3d(64+data_dim, 64, kernel_size=kernel_size, padding=padding, stride=1),
+                nn.ReLU(inplace=True),
                 nn.BatchNorm3d(64),
             )
         else:
             self._conv2 = nn.Sequential(
-                nn.Conv3d(32, 64, kernel_size=kernel_size, padding=padding, stride=1),
-                nn.Tanh(),
+                nn.Conv3d(64, 64, kernel_size=kernel_size, padding=padding, stride=1),
+                nn.ReLU(inplace=True),
                 nn.BatchNorm3d(64),
             )
         self._conv3 = nn.Sequential(
-            nn.ConvTranspose3d(64, 128, kernel_size=kernel_size, padding=padding, stride=1),
-            nn.Tanh(),
-            nn.BatchNorm3d(128),
-            nn.Conv3d(128, 3, kernel_size=kernel_size, padding=padding, stride=1),
+            nn.Conv3d(64, 3, kernel_size=(1,1,1), padding=(0,0,0), stride=1),
             nn.Tanh(),
         )
 
