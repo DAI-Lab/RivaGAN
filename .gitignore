@@ -64,6 +64,7 @@ instance/
 
 # Sphinx documentation
 docs/_build/
+docs/api/
 
 # PyBuilder
 target/
@@ -101,19 +102,5 @@ ENV/
 # mypy
 .mypy_cache/
 
-# custom files
-*.pt
-*.png
-*.jpg
-.DS_Store
-
-research/data
-research/*.png
-docs/api
-
-# VIM
+# Vim
 .*.swp
-
-# Media
-*.mp4
-*.avi

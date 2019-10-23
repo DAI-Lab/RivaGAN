@@ -5,7 +5,7 @@
 
 import unittest
 
-from rivagan import rivagan
+# from rivagan import rivagan
 
 
 class TestRivagan(unittest.TestCase):
