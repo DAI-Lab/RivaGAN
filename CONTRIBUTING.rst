@@ -62,13 +62,13 @@ Ready to contribute? Here's how to set up `RivaGAN` for local development.
 1. Fork the `RivaGAN` repo on GitHub.
 2. Clone your fork locally::
 
-    $ git clone git@github.com:your_name_here/rivagan.git
+    $ git clone git@github.com:your_name_here/RivaGAN.git
 
 3. Install your local copy into a virtualenv. Assuming you have virtualenvwrapper installed,
    this is how you set up your fork for local development::
 
-    $ mkvirtualenv rivagan
-    $ cd rivagan/
+    $ mkvirtualenv RivaGAN
+    $ cd RivaGAN/
     $ make install-develop
 
 4. Create a branch for local development::
@@ -201,6 +201,37 @@ Once this is done, run of the following commands:
 
     make release-major
 
-.. _GitHub issues page: https://github.com/DAI-Lab/rivagan/issues
-.. _Travis Build Status page: https://travis-ci.org/DAI-Lab/rivagan/pull_requests
+Release Candidates
+~~~~~~~~~~~~~~~~~~
+
+Sometimes it is necessary or convenient to upload a release candidate to PyPi as a pre-release,
+in order to make some of the new features available for testing on other projects before they
+are included in an actual full-blown release.
+
+In order to perform such an action, you can execute::
+
+    make release-candidate
+
+This will perform the following actions:
+
+1. Build and upload the current version to PyPi as a pre-release, with the format ``X.Y.Z.devN``
+
+2. Bump the current version to the next release candidate, ``X.Y.Z.dev(N+1)``
+
+After this is done, the new pre-release can be installed by including the ``dev`` section in the
+dependency specification, either in ``setup.py``::
+
+    install_requires = [
+        ...
+        'rivagan>=X.Y.Z.dev',
+        ...
+    ]
+
+or in command line::
+
+    pip install 'rivagan>=X.Y.Z.dev'
+
+
+.. _GitHub issues page: https://github.com/DAI-Lab/RivaGAN/issues
+.. _Travis Build Status page: https://travis-ci.org/DAI-Lab/RivaGAN/pull_requests
 .. _Google docstrings style: https://google.github.io/styleguide/pyguide.html?showone=Comments#Comments

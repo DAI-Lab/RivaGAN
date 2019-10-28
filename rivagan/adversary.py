@@ -1,18 +1,18 @@
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
+from torch import nn
+
 
 class Critic(nn.Module):
     """
-    The Critic module maps a video to a scalar score. It takes in a batch of N videos - each of which 
-    is of length L, height H, and width W - and produces a score for each video which corresponds to
-    how "realistic" it looks.
+    The Critic module maps a video to a scalar score. It takes in a batch of N videos - each
+    of which is of length L, height H, and width W - and produces a score for each video which
+    corresponds to how "realistic" it looks.
 
     Input: (N, 3, L, H, W)
     Output: (N, 1)
     """
 
-    def __init__(self, kernel_size=(1,3,3), padding=(0,0,0)):
+    def __init__(self, kernel_size=(1, 3, 3), padding=(0, 0, 0)):
         super(Critic, self).__init__()
         self._conv = nn.Sequential(
             nn.Conv3d(3, 16, kernel_size=kernel_size, padding=padding, stride=2),
@@ -28,7 +28,8 @@ class Critic(nn.Module):
     def forward(self, frames):
         frames = self._conv(frames)
         N, _, L, H, W = frames.size()
-        return self._linear(torch.mean(frames.view(N, -1, L*H*W), dim=2))
+        return self._linear(torch.mean(frames.view(N, -1, L * H * W), dim=2))
+
 
 class Adversary(nn.Module):
     """
@@ -39,7 +40,7 @@ class Adversary(nn.Module):
     Output: (N, 3, L, H, W)
     """
 
-    def __init__(self, l1_max=0.05, kernel_size=(1,3,3), padding=(0,1,1)):
+    def __init__(self, l1_max=0.05, kernel_size=(1, 3, 3), padding=(0, 1, 1)):
         super(Adversary, self).__init__()
         self.l1_max = l1_max
         self._conv = nn.Sequential(
